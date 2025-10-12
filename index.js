@@ -53,6 +53,19 @@ async function generateHoroscope(sign, promptStyle, dayContext) {
     }
 }
 
+async function generateTarotReading(dayContext) {
+    const prompt = `Вибери одну випадкову старшу карту Таро (Major Arcana). Надай її назву українською та короткий, позитивний опис її значення для прогнозу на ${dayContext}. Формат: *[Назва Карти]*\nОпис та прогноз. Довжина тексту не більше 70 слів.`;
+
+    try {
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const result = await model.generateContent(prompt);
+        return result.response.text().trim();
+    } catch (error) {
+        console.error(`⚠️ Ошибка генерации Таро:`, error.message.substring(0, 100));
+        return `❌ Не вдалося отримати карту Таро. (${error.message.substring(0, 30)}...)`;
+    }
+}
+
 async function publishSeriousHoroscope() {
     console.log('--- Начинается публикация СЕРЬЕЗНОГО гороскопа ---');
 
@@ -90,7 +103,6 @@ async function publishSeriousHoroscope() {
 
 async function publishFunnyHoroscope() {
     console.log('--- Начинается публикация КУМЕДНОГО гороскопа ---');
-
     const today = new Date();
     const day = today.getDate();
     const monthNamesUa = [
@@ -124,6 +136,34 @@ async function publishFunnyHoroscope() {
     }
 }
 
+async function publishTarotReading() {
+    console.log('--- Начинается публикация КАРТЫ ДНЯ ТАРО ---');
+
+    // Дата: СЬОГОДНІ
+    const today = new Date();
+    const day = today.getDate();
+    const monthNamesUa = [
+        'січня', 'лютого', 'березня', 'квітня', 'травня', 'червня',
+        'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'
+    ];
+    const month = monthNamesUa[today.getMonth()];
+
+    const dateString = `${day} ${month}`;
+
+    const tarotText = await generateTarotReading('сьогодні');
+
+    let message = `*Карта Дня Таро 🔮 ${dateString}*\n\n`;
+    message += `${tarotText}\n\n`;
+    message += `[Код Долі📌](${channelLink})\n`;
+
+    try {
+        await bot.telegram.sendMessage(channelChatId, message, { parse_mode: 'Markdown' });
+        console.log('✅ Карта Дня Таро успішно опублікована!');
+    } catch (telegramError) {
+        console.error('❌ Ошибка отправки Карты Дня Таро:', telegramError.message);
+        throw new Error('Telegram Publish Error: ' + telegramError.message);
+    }
+}
 
 cron.schedule('0 18 * * *', publishSeriousHoroscope, { timezone: 'Europe/Kiev' });
 console.log('🗓️ CRON (Серйозний) встановлено на 18:00 (Europe/Kiev).');
@@ -131,6 +171,8 @@ console.log('🗓️ CRON (Серйозний) встановлено на 18:00
 cron.schedule('0 12 * * *', publishFunnyHoroscope, { timezone: 'Europe/Kiev' });
 console.log('🗓️ CRON (Кумедний) встановлено на 12:00 (Europe/Kiev).');
 
+cron.schedule('0 10 * * *', publishTarotReading, { timezone: 'Europe/Kiev' });
+console.log('🗓️ CRON (Таро) встановлено на 09:00 (Europe/Kiev).');
 
 bot.command('test', async ctx => {
     ctx.reply('🚀 Тестова публікація серйозного гороскопа запущена у фоновому режимі. Це займе близько хвилини. Я надішлю повідомлення про завершення.');
@@ -158,6 +200,20 @@ bot.command('humor', async ctx => {
         })
         .catch((err) => {
             console.error('⚠️ Критична помилка при тестовій публікації (Funny):', err);
+            bot.telegram.sendMessage(targetChatId, `⚠️ Критична помилка: ${err.message}. Подробиці у консолі.`, { reply_to_message_id: ctx.message.message_id });
+        });
+});
+
+bot.command('taro', async ctx => {
+    ctx.reply('🔮 Тестова публікація Карти Дня Таро запущена у фоновому режимі. Це займе кілька секунд. Я надішлю повідомлення про завершення.');
+
+    const targetChatId = ctx.chat.id;
+    publishTarotReading()
+        .then(() => {
+            bot.telegram.sendMessage(targetChatId, '✅ Тестова публікація Таро завершена! Перевірте канал.', { reply_to_message_id: ctx.message.message_id });
+        })
+        .catch((err) => {
+            console.error('⚠️ Критична помилка при тестовій публікації (Таро):', err);
             bot.telegram.sendMessage(targetChatId, `⚠️ Критична помилка: ${err.message}. Подробиці у консолі.`, { reply_to_message_id: ctx.message.message_id });
         });
 });
