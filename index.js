@@ -84,7 +84,7 @@ function calculateLifePathNumber(date) {
 
 async function publishPost(message, postName) {
     try {
-        await bot.telegram.sendMessage(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, message, { parse_mode: 'Markdown' });
+        await bot.telegram.sendMessage(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true   });
         console.log(`✅ ${postName} успішно опублікований!`);
     } catch (telegramError) {
         console.error(`❌ Ошибка отправки ${postName}:`, telegramError.message);
