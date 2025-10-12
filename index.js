@@ -62,6 +62,26 @@ function calculateWeekRange(today) {
     return `${startWeek} — ${endWeek}`;
 }
 
+function calculateLifePathNumber(date) {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear().toString();
+
+    const fullDate = `${day}${month}${year}`;
+    let sum = 0;
+
+    for (let i = 0; i < fullDate.length; i++) {
+        sum += parseInt(fullDate[i], 10);
+    }
+
+    while (sum > 9 && sum !== 11 && sum !== 22) {
+        sum = sum.toString().split('').reduce((acc, digit) => acc + parseInt(digit, 10), 0);
+    }
+
+    return sum;
+}
+
+
 async function publishPost(message, postName) {
     try {
         await bot.telegram.sendMessage(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, message, { parse_mode: 'Markdown' });
@@ -110,6 +130,11 @@ async function generateCompatibilityReading(sign1, sign2) {
 async function generateWeeklyHoroscopeReading(sign) {
     const prompt = `Склади інформативний, нейтральний прогноз для знаку зодіаку *${sign}* на поточний тиждень. Опиши основні тенденції (робота, фінанси, особисте життя) одним-двома лаконічними реченнями. Довжина тексту НЕ ПОВИННА перевищувати 35 слів.`;
     return generateContent(prompt, sign);
+}
+
+async function generateNumerologyReading(number, dateString) {
+    const prompt = `Склади надихаючий прогноз українською мовою для *Числа Дня ${number}* на дату ${dateString}. Опиши ключові тенденції цього числа та дай пораду, як використати його енергію. Довжина тексту НЕ ПОВИННА перевищувати 80 слів.`;
+    return generateContent(prompt, `Numerology: ${number}`);
 }
 
 async function publishSeriousHoroscope() {
@@ -197,6 +222,22 @@ async function publishWeeklyHoroscope() {
     await publishPost(message, 'Еженедельный гороскоп');
 }
 
+async function publishNumerologyReading() {
+    console.log('--- Начинается публикация НУМЕРОЛОГИИ ДНЯ ---');
+    const today = new Date();
+    const dateStringUa = `${today.getDate()} ${getMonthNameUa(today)}`;
+
+    const number = calculateLifePathNumber(today);
+    const numerologyText = await generateNumerologyReading(number, dateStringUa);
+
+    let message = `*Нумерологія Дня 🔢 ${dateStringUa}*\n\n`;
+    message += `*Ваше число дня: ${number}*\n\n`;
+    message += `${numerologyText}\n\n`;
+    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
+
+    await publishPost(message, 'Нумерологія Дня');
+}
+
 cron.schedule('0 18 * * *', publishSeriousHoroscope, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Серйозний) встановлено на 18:00 (${TIMEZONE}).`);
 
@@ -212,6 +253,8 @@ console.log(`🗓️ CRON (Сумісність) встановлено на 20:
 cron.schedule('0 9 * * 1', publishWeeklyHoroscope, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Тиждень) встановлено на 09:00 щопонеділка (${TIMEZONE}).`);
 
+cron.schedule('0 8 * * *', publishNumerologyReading, { timezone: TIMEZONE });
+console.log(`🗓️ CRON (Нумерологія) встановлено на 08:00 щоденно (${TIMEZONE}).`);
 
 bot.start(ctx => ctx.reply('Привіт 🌙 Я бот-астролог Gemini, публікую гороскопи кожен день 🪐'));
 
@@ -234,6 +277,8 @@ bot.command('humor', ctx => handleTestCommand(ctx, publishFunnyHoroscope, 'Funny
 bot.command('taro', ctx => handleTestCommand(ctx, publishTarotReading, 'Tarot'));
 bot.command('match', ctx => handleTestCommand(ctx, publishCompatibilityReading, 'Сумісність'));
 bot.command('week', ctx => handleTestCommand(ctx, publishWeeklyHoroscope, 'Тиждень'));
+bot.command('number', ctx => handleTestCommand(ctx, publishNumerologyReading, 'Нумерологія Дня'));
+
 
 bot.launch();
 console.log('🌟 Gemini бот запущен і очікує розкладу');
