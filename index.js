@@ -158,6 +158,16 @@ async function generateNumerologyReading(number, dateString) {
     return generateContent(prompt, `Numerology: ${number}`);
 }
 
+async function generateDailyWish(dateString) {
+    const prompt = `Склади коротке, позитивне, мотивуюче *Побажання на ${dateString}*. Використовуй емодзі. Текст має бути надихаючим. Довжина тексту НЕ ПОВИННА перевищувати 25 слів.`;
+    return generateContent(prompt, 'Daily Wish');
+}
+
+async function generateDailyTarotAnalysis(dayContext) {
+    const prompt = `Вибери три випадкові старші карти Таро (Major Arcana). Надай їхні назви українською та склади на їхній основі короткий, але змістовний "розбір таро" на ${dayContext}. Сформулюй пораду та ключовий меседж. Формат: *[Назва Карти 1]*, *[Назва Карти 2]*, *[Назва Карти 3]*. Потім опис розбору. Довжина тексту не більше 120 слів.`;
+    return generateContent(prompt, 'Tarot Analysis');
+}
+
 async function publishSeriousHoroscope() {
     console.log('--- Начинается публикация СЕРЬЕЗНОГО гороскопа ---');
     const today = new Date();
@@ -259,6 +269,40 @@ async function publishNumerologyReading() {
     await publishPost(message, 'Нумерологія Дня');
 }
 
+async function publishDailyWish() {
+    console.log('--- Начинается публикация ПОБАЖАННЯ НА ДЕНЬ ---');
+    const today = new Date();
+    const dateStringUa = `${today.getDate()} ${getMonthNameUa(today)}`;
+
+    const wishText = await generateDailyWish(dateStringUa);
+
+    let message = `*Доброго ранку! ☕ Побажання на ${dateStringUa}*\n\n`;
+    message += `${wishText}\n\n`;
+    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
+
+    await publishPost(message, 'Побажання на День');
+}
+
+async function publishDailyTarotAnalysis() {
+    console.log('--- Начинается публикация ЩОДЕННОГО РОЗБОРУ ТАРО ---');
+    const today = new Date();
+    const dateStringUa = `${today.getDate()} ${getMonthNameUa(today)}`;
+
+    const analysisText = await generateDailyTarotAnalysis('сьогоднішній вечір');
+
+    let message = `*Розбір Таро на Вечір 🃏 ${dateStringUa}*\n\n`;
+    message += `${analysisText}\n\n`;
+    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
+
+    await publishPost(message, 'Щоденний Розбір Таро');
+}
+
+cron.schedule('0 20 * * *', publishDailyTarotAnalysis, { timezone: TIMEZONE });
+console.log(`🗓️ CRON (Розбір Таро) встановлено на 20:00 щоденно (${TIMEZONE}).`);
+
+cron.schedule('0 7 * * *', publishDailyWish, { timezone: TIMEZONE });
+console.log(`🗓️ CRON (Побажання) встановлено на 07:00 щоденно (${TIMEZONE}).`);
+
 cron.schedule('0 18 * * *', publishSeriousHoroscope, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Серйозний) встановлено на 18:00 (${TIMEZONE}).`);
 
@@ -299,6 +343,8 @@ bot.command('taro', ctx => handleTestCommand(ctx, publishTarotReading, 'Tarot'))
 bot.command('match', ctx => handleTestCommand(ctx, publishCompatibilityReading, 'Сумісність'));
 bot.command('week', ctx => handleTestCommand(ctx, publishWeeklyHoroscope, 'Тиждень'));
 bot.command('number', ctx => handleTestCommand(ctx, publishNumerologyReading, 'Нумерологія Дня'));
+bot.command('wish', ctx => handleTestCommand(ctx, publishDailyWish, 'Побажання Дня'));
+bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAnalysis, 'Розбір Таро'));
 
 
 bot.launch();
