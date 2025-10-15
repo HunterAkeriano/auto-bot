@@ -23,7 +23,7 @@ const ZODIAC_SIGNS = [
     { name: 'Рак', emoji: '♋️' },
     { name: 'Лев', emoji: '♌️' },
     { name: 'Діва', emoji: '♍️' },
-    { name: 'Терези', emoji: '♎️' },
+    { name: 'Терези', emoji: '♎️️' },
     { name: 'Скорпіон', emoji: '♏️' },
     { name: 'Стрілець', emoji: '♐️' },
     { name: 'Козеріг', emoji: '♑️' },
@@ -40,6 +40,30 @@ const bot = new Telegraf(TELEGRAM_CONFIG.BOT_TOKEN);
 const genAI = new GoogleGenerativeAI(GEMINI_CONFIG.API_KEY);
 const model = genAI.getGenerativeModel({ model: GEMINI_CONFIG.MODEL });
 const TIMEZONE = 'Europe/Kiev';
+
+const usedTarotCardsHistory = [];
+const MAX_TAROT_CARDS = 78;
+
+function saveUsedTarotCard(generatedText) {
+    const match = generatedText.match(/\*([^*]+)\*/);
+    if (match && match[1]) {
+        const cardName = match[1].trim();
+
+        if (usedTarotCardsHistory.length >= MAX_TAROT_CARDS) {
+            console.log(`⚠️ Історія Таро досягла ${MAX_TAROT_CARDS} карт. Починаємо новий цикл.`);
+            usedTarotCardsHistory.length = 0;
+        }
+
+        if (!usedTarotCardsHistory.includes(cardName)) {
+            usedTarotCardsHistory.push(cardName);
+            console.log(`[Tarot History] Використано карту: ${cardName}. Карт в історії: ${usedTarotCardsHistory.length}`);
+        } else {
+            console.warn(`[Tarot History] Карта "${cardName}" вже була в історії, ігноруємо.`);
+        }
+    } else {
+        console.warn('[Tarot History] Не вдалося визначити назву карти для запобігання повтору.');
+    }
+}
 
 function getMonthNameUa(date) {
     const monthNamesUa = [
@@ -139,8 +163,14 @@ async function generateHoroscope(sign, promptStyle, dayContext) {
 }
 
 async function generateTarotReading(dayContext) {
-    const prompt = `Вибери одну випадкову старшу карту Таро (Major Arcana). Надай її назву українською та короткий, позитивний опис її значення для прогнозу на ${dayContext}. Формат: *[Назва Карти]*\nОпис та прогноз. Довжина тексту не більше 70 слів.`;
-    return generateContent(prompt, 'Tarot');
+    const exclusionList = usedTarotCardsHistory.join(', ');
+    const exclusion = exclusionList ? ` Карта НЕ ПОВИННА бути однією з цих: ${exclusionList}.` : '';
+
+    const prompt = `Вибери одну випадкову карту з повної колоди Таро (78 карт), включаючи Молодші Аркани. Надай її назву українською та короткий, позитивний опис її значення для прогнозу на ${dayContext}. Формат: *[Назва Карти]*. Опис та прогноз. Довжина тексту не більше 70 слів.${exclusion}`;
+
+    const result = await generateContent(prompt, 'Tarot (78 cards)');
+    saveUsedTarotCard(result);
+    return result;
 }
 
 async function generateCompatibilityReading(sign1, sign2) {
@@ -163,9 +193,16 @@ async function generateDailyWish(dateString) {
     return generateContent(prompt, 'Daily Wish');
 }
 
+// ОНОВЛЕНО: Використовуємо usedTarotCardsHistory та вимагаємо 78 карт
 async function generateDailyTarotAnalysis(dayContext) {
-    const prompt = `Вибери ОДНУ випадкову старшу карту Таро (Major Arcana). Надай її назву українською та склади на її основі глибокий, змістовний "розбір таро" на ${dayContext}. Опиши ключове значення, дай психологічну пораду та поясни, як її енергія впливає на вечір. Формат: *[Назва Карти]*. Потім детальний аналіз. Довжина тексту не більше 120 слів.`;
-    return generateContent(prompt, 'Tarot Analysis');
+    const exclusionList = usedTarotCardsHistory.join(', ');
+    const exclusion = exclusionList ? ` УВАГА! НЕ використовуй карту з назвою, яка є однією з цих: ${exclusionList}.` : '';
+
+    const prompt = `Вибери ОДНУ випадкову карту з повної колоди Таро (78 карт, включаючи Молодші Аркани). Надай її назву українською та склади на її основі глибокий, змістовний "розбір таро" на ${dayContext}. Опиши ключове значення, дай психологічну пораду та поясни, як її енергія впливає на вечір. Формат: *[Назва Карти]*. Потім детальний аналіз.${exclusion} Довжина тексту не більше 120 слів.`;
+
+    const result = await generateContent(prompt, 'Tarot Analysis (78 cards)');
+    saveUsedTarotCard(result);
+    return result;
 }
 
 async function publishSeriousHoroscope() {
@@ -284,21 +321,21 @@ async function publishDailyWish() {
 }
 
 async function publishDailyTarotAnalysis() {
-    console.log('--- Начинается публикация ЩОДЕННОГО РОЗБОРУ ТАРО ---');
+    console.log('--- Начинается публикация ЩОДЕННОГО РОЗБОРУ ТАРО (ОДНА КАРТА) ---');
     const today = new Date();
     const dateStringUa = `${today.getDate()} ${getMonthNameUa(today)}`;
 
     const analysisText = await generateDailyTarotAnalysis('сьогоднішній вечір');
 
-    let message = `*Розбір Таро на Вечір 🃏 ${dateStringUa}*\n\n`;
+    let message = `*Розбір Карти Таро 🃏 ${dateStringUa}*\n\n`;
     message += `${analysisText}\n\n`;
     message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
 
-    await publishPost(message, 'Щоденний Розбір Таро');
+    await publishPost(message, 'Щоденний Розбір Таро (Одна Карта)');
 }
 
-cron.schedule('0 21 * * *', publishDailyTarotAnalysis, { timezone: TIMEZONE });
-console.log(`🗓️ CRON (Розбір Таро) встановлено на 21:00 щоденно (${TIMEZONE}).`);
+cron.schedule('0 19 * * *', publishDailyTarotAnalysis, { timezone: TIMEZONE });
+console.log(`🗓️ CRON (Розбір Таро - Одна Карта) встановлено на 19:00 щоденно (${TIMEZONE}).`);
 
 cron.schedule('0 7 * * *', publishDailyWish, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Побажання) встановлено на 07:00 щоденно (${TIMEZONE}).`);
@@ -344,7 +381,7 @@ bot.command('match', ctx => handleTestCommand(ctx, publishCompatibilityReading, 
 bot.command('week', ctx => handleTestCommand(ctx, publishWeeklyHoroscope, 'Тиждень'));
 bot.command('number', ctx => handleTestCommand(ctx, publishNumerologyReading, 'Нумерологія Дня'));
 bot.command('wish', ctx => handleTestCommand(ctx, publishDailyWish, 'Побажання Дня'));
-bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAnalysis, 'Розбір Таро'));
+bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAnalysis, 'Розбір Таро (Одна Карта)'));
 
 
 bot.launch();
