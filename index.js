@@ -297,8 +297,8 @@ async function publishDailyTarotAnalysis() {
     await publishPost(message, 'Щоденний Розбір Таро');
 }
 
-cron.schedule('0 20 * * *', publishDailyTarotAnalysis, { timezone: TIMEZONE });
-console.log(`🗓️ CRON (Розбір Таро) встановлено на 20:00 щоденно (${TIMEZONE}).`);
+cron.schedule('0 21 * * *', publishDailyTarotAnalysis, { timezone: TIMEZONE });
+console.log(`🗓️ CRON (Розбір Таро) встановлено на 21:00 щоденно (${TIMEZONE}).`);
 
 cron.schedule('0 7 * * *', publishDailyWish, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Побажання) встановлено на 07:00 щоденно (${TIMEZONE}).`);
