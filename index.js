@@ -93,14 +93,35 @@ async function publishPost(message, postName) {
 }
 
 async function generateContent(prompt, sign = 'General') {
-    try {
-        const result = await model.generateContent(prompt);
-        return result.response.text().trim().replace(/[\r\n]{2,}/g, '\n');
-    } catch (error) {
-        console.error(`⚠️ Ошибка генерации для знака ${sign}:`, error.message.substring(0, 100));
-        return `❌ Не вдалося отримати прогноз. (${error.message.substring(0, 30)}...)`;
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 5000;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            console.log(`[${sign}] Спроба генерації №${attempt}...`);
+            const result = await model.generateContent(prompt);
+
+            const generatedText = result.response.text().trim().replace(/[\r\n]{2,}/g, '\n');
+
+            if (attempt > 1) {
+                console.log(`✅ [${sign}] Успіх після ${attempt} спроби.`);
+            }
+
+            return generatedText;
+
+        } catch (error) {
+            console.error(`⚠️ [${sign}] Помилка генерації на спробі ${attempt}: ${error.message.substring(0, 100)}`);
+
+            if (attempt === MAX_RETRIES) {
+                console.error(`❌ [${sign}] Критична помилка. Вичерпано всі ${MAX_RETRIES} спроби.`);
+                return `❌ Зорі сьогодні нерозбірливі, або ж канал зв'язку перервано. Спробуємо завтра!`;
+            }
+
+            await new Promise(r => setTimeout(r, RETRY_DELAY));
+        }
     }
 }
+
 
 async function generateHoroscope(sign, promptStyle, dayContext) {
     let basePrompt;
