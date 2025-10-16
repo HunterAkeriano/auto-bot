@@ -291,11 +291,26 @@ bot.action('PREDICT_DAY', (ctx) => handleUserPredictionRequest(ctx, 'На ден
 bot.action('PREDICT_WEEK', (ctx) => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, userWeeklyLimits, WEEKLY_LIMIT_MS));
 bot.action('PREDICT_MONTH', (ctx) => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, userMonthlyLimits, MONTHLY_LIMIT_MS));
 
+function getCommandHint(isAdmin) {
+    let hint = `\n\n*Основні команди:*\n` +
+        `👉 /gadaniye \\- Отримати індивідуальне Таро\\-передбачення\\.\n` +
+        `👉 /start \\- Початкове привітання\\.\n`;
+
+    if (isAdmin) {
+        hint += `\n*Команди Адміна (для тестування):*\n` +
+            `/test, /humor, /taro, /match, /week, /number, /wish, /tarot\\_analysis\n`;
+    }
+
+    return hint;
+}
+
 bot.start(ctx => {
+    const isAdmin = ctx.from.id.toString() === TELEGRAM_CONFIG.ADMIN_ID.toString();
     const welcomeMessage = sanitizeUserMarkdown(
         'Привіт 🌙 Я бот-астролог Микола Бондарь, публікую гороскопи кожен день 🪐\n\n' +
         'Щоб отримати *індивідуальне передбачення Таро*, скористайтеся командою:\n' +
-        '👉 /gadaniye (або просто напишіть мені повідомлення)'
+        '👉 /gadaniye (або просто напишіть мені повідомлення)' +
+        getCommandHint(isAdmin)
     );
     ctx.replyWithMarkdownV2(welcomeMessage);
 });
@@ -542,8 +557,12 @@ bot.command('gadaniye', async (ctx) => {
 
 bot.on('text', async (ctx) => {
     const userId = ctx.from.id;
+    const isAdmin = ctx.from.id.toString() === TELEGRAM_CONFIG.ADMIN_ID.toString();
 
-    if (ctx.chat.type !== 'private') return
+    if (ctx.chat.type !== 'private') {
+        const message = sanitizeUserMarkdown(`Я бачу, ви пишете у групі\\. Щоб отримати передбачення, скористайтеся командою *\\/gadaniye* або пишіть мені в особисті повідомлення\\.`);
+        return ctx.replyWithMarkdownV2(message);
+    }
 
     if (ctx.message.text.startsWith('/')) return;
 
@@ -551,9 +570,10 @@ bot.on('text', async (ctx) => {
         return ctx.replyWithMarkdownV2(sanitizeUserMarkdown(`⏳ Вибачте, ваш попередній прогноз ще генерується\\. Зачекайте кілька секунд і спробуйте знову\\.`));
     }
 
-    const message = sanitizeUserMarkdown(`🤔 Ви помилилися або ввели невідому команду\\. Оберіть потрібний прогноз нижче:`);
+    const commandHint = getCommandHint(isAdmin);
+    const message = sanitizeUserMarkdown(`🤔 Ви помилилися або ввели невідому команду\\. Оберіть потрібний прогноз нижче або скористайтеся командами:\n`);
 
-    await ctx.replyWithMarkdownV2(message, predictionKeyboard);
+    await ctx.replyWithMarkdownV2(message + commandHint, predictionKeyboard);
 });
 
 bot.launch();
