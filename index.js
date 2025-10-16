@@ -543,6 +543,8 @@ bot.command('gadaniye', async (ctx) => {
 bot.on('text', async (ctx) => {
     const userId = ctx.from.id;
 
+    if (ctx.chat.type !== 'private') return
+
     if (ctx.message.text.startsWith('/')) return;
 
     if (userGeneratingState[userId]) {
