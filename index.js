@@ -256,8 +256,6 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limit
     })();
 
     userGeneratingState[userId] = generationPromise;
-
-    await generationPromise;
 }
 
 const predictionKeyboard = Markup.inlineKeyboard([
