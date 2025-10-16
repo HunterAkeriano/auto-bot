@@ -226,26 +226,38 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limit
         );
     }
 
-    limits[userId] = now;
-    userGeneratingState[userId] = true;
+    if (userGeneratingState[userId]) {
+        return ctx.replyWithMarkdownV2(
+            sanitizeMarkdown('⏳ Ваш персональний розклад ще генерується\\. Зачекайте кілька секунд і спробуйте знову\\.'),
+            { disable_web_page_preview: true }
+        );
+    }
+
     await ctx.reply('🔮 Зорі вже шикуються, готую передбачення...');
 
-    const timeout = setTimeout(() => {
-        console.warn(`[Timeout] Генерація ${type} для ${userId} перевищила ${GENERATION_TIMEOUT_MS}мс`);
-        userGeneratingState[userId] = false;
-    }, GENERATION_TIMEOUT_MS);
+    const generationPromise = (async () => {
+        const timeout = setTimeout(() => {
+            console.warn(`[Timeout] Генерація ${type} для ${userId} перевищила ${GENERATION_TIMEOUT_MS}мс`);
+        }, GENERATION_TIMEOUT_MS);
 
-    try {
-        const text = await generatorFn();
-        await ctx.replyWithMarkdownV2(sanitizeMarkdown(text));
-    } catch (err) {
-        console.error(err);
-        delete limits[userId];
-        await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.');
-    } finally {
-        clearTimeout(timeout);
-        userGeneratingState[userId] = false;
-    }
+        try {
+            const text = await generatorFn();
+            await ctx.replyWithMarkdownV2(sanitizeMarkdown(text));
+
+            limits[userId] = now;
+
+        } catch (err) {
+            console.error(`[Error] Помилка генерації для ${userId}:`, err);
+            await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.');
+        } finally {
+            clearTimeout(timeout);
+            delete userGeneratingState[userId];
+        }
+    })();
+
+    userGeneratingState[userId] = generationPromise;
+
+    await generationPromise;
 }
 
 const predictionKeyboard = Markup.inlineKeyboard([
@@ -254,17 +266,9 @@ const predictionKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('На місяць 🌕', 'PREDICT_MONTH')]
 ]);
 
-function guardGeneratingState(ctx, next) {
-    const userId = ctx.from.id;
-    if (userGeneratingState[userId]) {
-        return ctx.replyWithMarkdownV2(sanitizeMarkdown(`⏳ Вибачте, ваш попередній прогноз ще генерується\\. Зачекайте кілька секунд і спробуйте знову\\.`));
-    }
-    return next();
-}
-
-bot.action('PREDICT_DAY', guardGeneratingState, (ctx) => handleUserPredictionRequest(ctx, 'На день', generatePersonalTarotReading, userDailyLimits, DAILY_LIMIT_MS));
-bot.action('PREDICT_WEEK', guardGeneratingState, (ctx) => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, userWeeklyLimits, WEEKLY_LIMIT_MS));
-bot.action('PREDICT_MONTH', guardGeneratingState, (ctx) => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, userMonthlyLimits, MONTHLY_LIMIT_MS));
+bot.action('PREDICT_DAY', (ctx) => handleUserPredictionRequest(ctx, 'На день', generatePersonalTarotReading, userDailyLimits, DAILY_LIMIT_MS));
+bot.action('PREDICT_WEEK', (ctx) => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, userWeeklyLimits, WEEKLY_LIMIT_MS));
+bot.action('PREDICT_MONTH', (ctx) => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, userMonthlyLimits, MONTHLY_LIMIT_MS));
 
 bot.start(ctx => {
     const welcomeMessage = sanitizeMarkdown(
@@ -512,7 +516,7 @@ bot.command('week', ctx => handleTestCommand(ctx, publishWeeklyHoroscope, 'Ти�
 bot.command('number', ctx => handleTestCommand(ctx, publishNumerologyReading, 'Нумерологія Дня'));
 bot.command('wish', ctx => handleTestCommand(ctx, publishDailyWish, 'Побажання Дня'));
 bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAnalysis, 'Розбір Таро (Одна Карта)'));
-bot.command('gadaniye', guardGeneratingState, async (ctx) => {
+bot.command('gadaniye', async (ctx) => {
     const message = sanitizeMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n Зверніть увагу, кожен тип має свій ліміт часу.`);
     await ctx.replyWithMarkdownV2(message, predictionKeyboard);
 });
