@@ -183,7 +183,7 @@ async function generateContent(prompt, sign = 'General') {
             const generatedText = result.response.text().trim().replace(/[\r\n]{2,}/g, '\n');
 
             if (attempt > 1) {
-                console.log(`✅ [${sign}] Успіх після ${attempt} спроби.`);
+                console.log(`✅ [${sign}] Усіпх після ${attempt} спроби.`);
             }
 
             return generatedText;
@@ -551,6 +551,17 @@ bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAna
 bot.command('gadaniye', async (ctx) => {
     const message = sanitizeUserMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n Зверніть увагу, кожен тип має свій ліміт часу.`);
     await ctx.replyWithMarkdownV2(message, predictionKeyboard);
+});
+
+bot.command('show_menu', async (ctx) => {
+    const message = sanitizeUserMarkdown(`🔮 *Клавіатура відновлена.* Оберіть потрібний прогноз нижче:`);
+    await ctx.replyWithMarkdownV2(message, { reply_markup: predictionReplyKeyboard });
+});
+
+bot.command('hide_menu', async (ctx) => {
+    await ctx.reply('✅ Клавіатуру було приховано. Натисніть /start або /show_menu, щоб її відновити.',
+        Markup.removeKeyboard()
+    );
 });
 
 bot.on('text', async (ctx) => {
