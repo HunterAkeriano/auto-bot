@@ -262,13 +262,6 @@ function guardGeneratingState(ctx, next) {
     return next();
 }
 
-bot.command('гадаю', guardGeneratingState, (ctx) => {
-    const message = sanitizeMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n_Зверніть увагу, кожен тип має свій ліміт часу._`);
-    ctx.replyWithMarkdownV2(message, {
-        reply_markup: predictionKeyboard
-    });
-});
-
 bot.action('PREDICT_DAY', guardGeneratingState, (ctx) => handleUserPredictionRequest(ctx, 'На день', generatePersonalTarotReading, userDailyLimits, DAILY_LIMIT_MS));
 bot.action('PREDICT_WEEK', guardGeneratingState, (ctx) => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, userWeeklyLimits, WEEKLY_LIMIT_MS));
 bot.action('PREDICT_MONTH', guardGeneratingState, (ctx) => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, userMonthlyLimits, MONTHLY_LIMIT_MS));
@@ -277,7 +270,7 @@ bot.start(ctx => {
     const welcomeMessage = sanitizeMarkdown(
         'Привіт 🌙 Я бот-астролог Микола Бондарь, публікую гороскопи кожен день 🪐\n\n' +
         'Щоб отримати *індивідуальне передбачення Таро*, скористайтеся командою:\n' +
-        '👉 /гадаю (або просто напишіть мені повідомлення)'
+        '👉 /gadaniye (або просто напишіть мені повідомлення)'
     );
     ctx.replyWithMarkdownV2(welcomeMessage);
 });
@@ -519,6 +512,10 @@ bot.command('week', ctx => handleTestCommand(ctx, publishWeeklyHoroscope, 'Ти�
 bot.command('number', ctx => handleTestCommand(ctx, publishNumerologyReading, 'Нумерологія Дня'));
 bot.command('wish', ctx => handleTestCommand(ctx, publishDailyWish, 'Побажання Дня'));
 bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAnalysis, 'Розбір Таро (Одна Карта)'));
+bot.command('gadaniye', guardGeneratingState, async (ctx) => {
+    const message = sanitizeMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n Зверніть увагу, кожен тип має свій ліміт часу.`);
+    await ctx.replyWithMarkdownV2(message, predictionKeyboard);
+});
 
 bot.on('text', async (ctx) => {
     const userId = ctx.from.id;
