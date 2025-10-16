@@ -6,9 +6,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 dotenv.config();
 
 const TELEGRAM_CONFIG = {
-    // ЗМІНА: Використовуємо ADMIN_ID для особистої перевірки
     ADMIN_ID: process.env.ADMIN_ID,
-    // НОВЕ: ID каналу для публікацій (потрібно додати у .env)
     CHANNEL_CHAT_ID: process.env.CHANNEL_CHAT_ID,
     CHANNEL_LINK: process.env.CHANNEL_LINK,
     BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
@@ -166,7 +164,6 @@ async function publishPost(rawMessage, postName) {
     const finalMessage = htmlMessage + finalLinkHtml;
 
     try {
-        // !!! ПУБЛІКУЄМО В КАНАЛ !!!
         await bot.telegram.sendMessage(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, finalMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
         console.log(`✅ ${postName} успішно опублікований у канал!`);
     } catch (telegramError) {
@@ -204,8 +201,6 @@ async function generateContent(prompt, sign = 'General') {
         }
     }
 }
-
-// ... (функції generatePersonalTarotWeekly, generatePersonalTarotMonthly, generatePersonalTarotReading залишаються без змін)
 
 async function generatePersonalTarotWeekly() {
     const prompt = `Вибери ТРИ випадкові карти Таро (з повної колоди, 78 карт) для індивідуального передбачення на *тиждень*. Назви ці карти. Склади надихаючий прогноз, де перша карта описує початок тижня, друга — середину, третя — кінець. Довжина тексту не більше 150 слів. Форматуй назви карт як *[Назва Карти]*.`;
@@ -247,7 +242,6 @@ bot.use(async (ctx, next) => {
     return next();
 });
 
-// handleUserPredictionRequest завжди відповідає користувачу в особистий чат
 async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limitMs) {
     const userId = ctx.from.id;
     const now = Date.now();
@@ -313,8 +307,6 @@ bot.start(ctx => {
     ctx.replyWithMarkdownV2(welcomeMessage);
 });
 
-// ... (Усі функції generate... залишаються без змін)
-
 async function generateHoroscope(sign, promptStyle, dayContext) {
     let basePrompt;
     const wordLimit = promptStyle === 'serious' ? 35 : 20;
@@ -371,8 +363,6 @@ async function generateDailyTarotAnalysis(dayContext) {
     saveUsedTarotCard(result);
     return result;
 }
-
-// Усі функції publish... використовують publishPost, який відправляє в канал.
 
 async function publishSeriousHoroscope() {
     console.log('--- Начинается публикация СЕРЬЕЗНОГО гороскопа ---');
@@ -496,7 +486,6 @@ async function publishDailyTarotAnalysis() {
     await publishPost(message, 'Щоденний Розбір Таро (Одна Карта)');
 }
 
-// CRON налаштований для виклику publishPost, який тепер відправляє в канал
 cron.schedule('0 19 * * *', publishDailyTarotAnalysis, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Розбір Таро - Одна Карта) встановлено на 19:00 щоденно (${TIMEZONE}).`);
 
@@ -528,14 +517,11 @@ async function handleTestCommand(ctx, publishFunction, postName) {
         return ctx.reply('🚫 Ця команда доступна лише адміністратору.');
     }
 
-    // сообщаем в ЛС, что пошла публикация
     await ctx.reply(`🚀 Тестова публікація (${postName}) розпочата! Зачекайте кілька секунд...`);
 
     try {
-        // запускаем функцию публікації (вона завжди публікує в канал)
         await publishFunction();
 
-        // уведомляем в ЛС про успіх
         await ctx.reply(`✅ Публікація "${postName}" завершена та відправлена у канал!`);
 
     } catch (err) {
