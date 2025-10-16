@@ -56,6 +56,12 @@ const DAILY_LIMIT_MS = 24 * 60 * 60 * 1000;
 const WEEKLY_LIMIT_MS = 7 * DAILY_LIMIT_MS;
 const MONTHLY_LIMIT_MS = 30 * DAILY_LIMIT_MS;
 
+const predictionReplyKeyboard = Markup.keyboard([
+    ['На день ☀️', 'На тиждень 📅', 'На місяць 🌕']
+])
+    .oneTime(false)
+    .resize();
+
 
 function saveUsedTarotCard(generatedText) {
     const match = generatedText.match(/\*([^*]+)\*/);
@@ -225,11 +231,14 @@ bot.use(async (ctx, next) => {
 
     if (userGeneratingState[userId]) {
         try {
+            const replyMessage = sanitizeUserMarkdown('⏳ *Ваш персональний розклад вже генерується*\\. Зачекайте кілька секунд, будь ласка\\.');
             await ctx.replyWithMarkdownV2(
-                sanitizeUserMarkdown('⏳ Ваш персональний розклад ще генерується\\. Зачекайте кілька секунд і спробуйте знову\\.'),
-                { disable_web_page_preview: true }
+                replyMessage,
+                { reply_to_message_id: ctx.message?.message_id, reply_markup: predictionReplyKeyboard }
             );
-        } catch {}
+        } catch (e) {
+            console.error('Error sending generating state message:', e.message);
+        }
         return;
     }
     return next();
@@ -245,14 +254,8 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limit
         const hours = Math.floor(diff / 3600000);
         const minutes = Math.floor((diff % 3600000) / 60000);
         return ctx.replyWithMarkdownV2(
-            sanitizeUserMarkdown(`⏳ Ви вже отримували прогноз ${type}. Спробуйте через ${hours} год. ${minutes} хв.`)
-        );
-    }
-
-    if (userGeneratingState[userId]) {
-        return ctx.replyWithMarkdownV2(
-            sanitizeUserMarkdown('⏳ Ваш персональний розклад ще генерується\\. Зачекайте кілька секунд і спробуйте знову\\.'),
-            { disable_web_page_preview: true }
+            sanitizeUserMarkdown(`⏳ Ви вже отримували прогноз ${type}. Спробуйте через ${hours} год. ${minutes} хв.`),
+            { reply_markup: predictionReplyKeyboard }
         );
     }
 
@@ -265,13 +268,13 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limit
 
         try {
             const text = await generatorFn();
-            await ctx.replyWithMarkdownV2(sanitizeUserMarkdown(text));
+            await ctx.replyWithMarkdownV2(sanitizeUserMarkdown(text), { reply_markup: predictionReplyKeyboard });
 
             limits[userId] = now;
 
         } catch (err) {
             console.error(`[Error] Помилка генерації для ${userId}:`, err);
-            await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.');
+            await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.', { reply_markup: predictionReplyKeyboard });
         } finally {
             clearTimeout(timeout);
             delete userGeneratingState[userId];
@@ -291,13 +294,23 @@ bot.action('PREDICT_DAY', (ctx) => handleUserPredictionRequest(ctx, 'На ден
 bot.action('PREDICT_WEEK', (ctx) => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, userWeeklyLimits, WEEKLY_LIMIT_MS));
 bot.action('PREDICT_MONTH', (ctx) => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, userMonthlyLimits, MONTHLY_LIMIT_MS));
 
+bot.hears('На день ☀️', (ctx) =>
+    handleUserPredictionRequest(ctx, 'На день', generatePersonalTarotReading, userDailyLimits, DAILY_LIMIT_MS)
+);
+bot.hears('На тиждень 📅', (ctx) =>
+    handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, userWeeklyLimits, WEEKLY_LIMIT_MS)
+);
+bot.hears('На місяць 🌕', (ctx) =>
+    handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, userMonthlyLimits, MONTHLY_LIMIT_MS)
+);
+
 bot.start(ctx => {
     const welcomeMessage = sanitizeUserMarkdown(
         'Привіт 🌙 Я бот-астролог Микола Бондарь, публікую гороскопи кожен день 🪐\n\n' +
-        'Щоб отримати *індивідуальне передбачення Таро*, скористайтеся командою:\n' +
-        '👉 /gadaniye (або просто напишіть мені повідомлення)'
+        'Оберіть свій *індивідуальний розклад Таро* за допомогою кнопок нижче, або скористайтеся командою:\n' +
+        '👉 /gadaniye'
     );
-    ctx.replyWithMarkdownV2(welcomeMessage);
+    ctx.replyWithMarkdownV2(welcomeMessage, { reply_markup: predictionReplyKeyboard });
 });
 
 async function generateHoroscope(sign, promptStyle, dayContext) {
@@ -541,19 +554,16 @@ bot.command('gadaniye', async (ctx) => {
 });
 
 bot.on('text', async (ctx) => {
-    const userId = ctx.from.id;
+    const text = ctx.message.text;
 
     if (ctx.chat.type !== 'private') return
 
-    if (ctx.message.text.startsWith('/')) return;
+    if (text.startsWith('/')) return;
 
-    if (userGeneratingState[userId]) {
-        return ctx.replyWithMarkdownV2(sanitizeUserMarkdown(`⏳ Вибачте, ваш попередній прогноз ще генерується\\. Зачекайте кілька секунд і спробуйте знову\\.`));
+    if (!['На день ☀️', 'На тиждень 📅', 'На місяць 🌕'].includes(text)) {
+        const message = sanitizeUserMarkdown(`🤔 Ви ввели невідому команду\\. Оберіть потрібний прогноз нижче:`);
+        await ctx.replyWithMarkdownV2(message, { reply_markup: predictionReplyKeyboard });
     }
-
-    const message = sanitizeUserMarkdown(`🤔 Ви помилилися або ввели невідому команду\\. Оберіть потрібний прогноз нижче:`);
-
-    await ctx.replyWithMarkdownV2(message, predictionKeyboard);
 });
 
 bot.launch();
