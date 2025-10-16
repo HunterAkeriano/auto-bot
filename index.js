@@ -45,7 +45,7 @@ const TIMEZONE = 'Europe/Kiev';
 
 const usedTarotCardsHistory = [];
 const MAX_TAROT_CARDS = 78;
-const GENERATION_TIMEOUT_MS = 90000;
+const GENERATION_TIMEOUT_MS = 350000;
 
 const userDailyLimits = {};
 const userWeeklyLimits = {};
@@ -123,9 +123,6 @@ function formatTarotCardBold(text) {
     return text.replace(/\*([^*]+)\*/, (_, card) => `*${randomEmoji} ${card.trim()}*`);
 }
 
-/**
- * 1. ФУНКЦІЯ ПУБЛІКАЦІЇ: Перетворення Markdown на HTML для каналу.
- */
 function convertToHtml(text) {
     if (!text) return '';
 
@@ -133,6 +130,8 @@ function convertToHtml(text) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+
+    htmlText = htmlText.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
 
     htmlText = htmlText.replace(/\*([^*]+)\*/g, '<b>$1</b>');
 
@@ -143,9 +142,6 @@ function convertToHtml(text) {
     return htmlText;
 }
 
-/**
- * 2. ФУНКЦІЯ ПЕРЕДБАЧЕНЬ: MarkdownV2 для особистих повідомлень.
- */
 function sanitizeUserMarkdown(text) {
     if (!text) return '';
     const markdownV2ReservedChars = /([_\[\]\(\)~`>#+\-=|{}.!\\/])/g;
@@ -155,9 +151,6 @@ function sanitizeUserMarkdown(text) {
         .replace(/([\r\n]{2,})/g, '\n\n');
 }
 
-/**
- * 3. КРИТИЧНЕ ВИПРАВЛЕННЯ: publishPost тепер використовує CHANNEL_CHAT_ID.
- */
 async function publishPost(rawMessage, postName) {
     const htmlMessage = convertToHtml(rawMessage);
     const finalLinkHtml = `<a href="${TELEGRAM_CONFIG.CHANNEL_LINK}">Код Долі📌</a>\n`;
@@ -370,13 +363,16 @@ async function publishSeriousHoroscope() {
     const tomorrow = new Date(today.getTime() + (24 * 60 * 60 * 1000));
     const dateString = `${tomorrow.getDate()} ${getMonthNameUa(tomorrow)}`;
 
+    const generationPromises = ZODIAC_SIGNS.map(sign =>
+        generateHoroscope(sign.name, 'serious', 'завтра').then(text => ({ sign, text }))
+    );
+
+    const results = await Promise.all(generationPromises);
+
     let message = `*Гороскоп на завтра 🗓️ ${dateString}*\n\n`;
 
-    for (const sign of ZODIAC_SIGNS) {
-        console.log(`⏳ Генерация серьезного гороскопа для ${sign.name}...`);
-        const text = await generateHoroscope(sign.name, 'serious', 'завтра');
-        message += `${sign.emoji} *${sign.name}*\n${text}\n\n`;
-        await new Promise(r => setTimeout(r, 3000));
+    for (const { sign, text } of results) {
+        message += `${sign.emoji} **${sign.name}**\n${text}\n\n`;
     }
 
     await publishPost(message, 'Серйозний гороскоп');
