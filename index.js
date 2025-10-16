@@ -1,12 +1,12 @@
 import dotenv from 'dotenv';
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import cron from 'node-cron';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 dotenv.config();
 
 const TELEGRAM_CONFIG = {
-    CHANNEL_CHAT_ID: process.env.CHANNEL_CHAT_ID,
+    ADMIN_ID: process.env.ADMIN_ID,
     CHANNEL_LINK: process.env.CHANNEL_LINK,
     BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
 };
@@ -30,8 +30,9 @@ const ZODIAC_SIGNS = [
     { name: 'Водолій', emoji: '♒️' },
     { name: 'Риби', emoji: '♓️' }
 ];
+const tarotEmojis = ['🔮', '🃏', '🌙', '✨', '🌟', '♾️', '🔥', '💫'];
 
-if (!TELEGRAM_CONFIG.BOT_TOKEN || !GEMINI_CONFIG.API_KEY || !TELEGRAM_CONFIG.CHANNEL_CHAT_ID || !TELEGRAM_CONFIG.CHANNEL_LINK) {
+if (!TELEGRAM_CONFIG.BOT_TOKEN || !GEMINI_CONFIG.API_KEY || !TELEGRAM_CONFIG.ADMIN_ID || !TELEGRAM_CONFIG.CHANNEL_LINK) {
     console.error('❌ Ошибка: Не найдены все необходимые переменные окружения. Проверьте файл .env');
     process.exit(1);
 }
@@ -43,6 +44,17 @@ const TIMEZONE = 'Europe/Kiev';
 
 const usedTarotCardsHistory = [];
 const MAX_TAROT_CARDS = 78;
+const GENERATION_TIMEOUT_MS = 90000;
+
+const userDailyLimits = {};
+const userWeeklyLimits = {};
+const userMonthlyLimits = {};
+const userGeneratingState = {};
+
+const DAILY_LIMIT_MS = 24 * 60 * 60 * 1000;
+const WEEKLY_LIMIT_MS = 7 * DAILY_LIMIT_MS;
+const MONTHLY_LIMIT_MS = 30 * DAILY_LIMIT_MS;
+
 
 function saveUsedTarotCard(generatedText) {
     const match = generatedText.match(/\*([^*]+)\*/);
@@ -105,10 +117,24 @@ function calculateLifePathNumber(date) {
     return sum;
 }
 
+function formatTarotCardBold(text) {
+    const randomEmoji = tarotEmojis[Math.floor(Math.random() * tarotEmojis.length)];
+    return text.replace(/\*([^*]+)\*/, (_, card) => `*${randomEmoji} ${card.trim()}*`);
+}
+
+function sanitizeMarkdown(text) {
+    if (!text) return '';
+    const markdownV2ReservedChars = /([_\[\]\(\)~`>#+\-=|{}.!\\/])/g;
+
+    return text
+        .replace(markdownV2ReservedChars, '\\$1')
+        .replace(/([\r\n]{2,})/g, '\n\n');
+}
+
 
 async function publishPost(message, postName) {
     try {
-        await bot.telegram.sendMessage(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true   });
+        await bot.telegram.sendMessage(TELEGRAM_CONFIG.ADMIN_ID, sanitizeMarkdown(message), { parse_mode: 'MarkdownV2', disable_web_page_preview: true });
         console.log(`✅ ${postName} успішно опублікований!`);
     } catch (telegramError) {
         console.error(`❌ Ошибка отправки ${postName}:`, telegramError.message);
@@ -138,7 +164,7 @@ async function generateContent(prompt, sign = 'General') {
 
             if (attempt === MAX_RETRIES) {
                 console.error(`❌ [${sign}] Критична помилка. Вичерпано всі ${MAX_RETRIES} спроби.`);
-                return `❌ Зорі сьогодні нерозбірливі, або ж канал зв'язку перервано. Спробуємо завтра!`;
+                return `❌ Зорі сьогодні нерозбірливі, або ж канал зв'язку перервано. Спробуємо пізніше!`;
             }
 
             await new Promise(r => setTimeout(r, RETRY_DELAY));
@@ -146,6 +172,115 @@ async function generateContent(prompt, sign = 'General') {
     }
 }
 
+async function generatePersonalTarotWeekly() {
+    const prompt = `Вибери ТРИ випадкові карти Таро (з повної колоди, 78 карт) для індивідуального передбачення на *тиждень*. Назви ці карти. Склади надихаючий прогноз, де перша карта описує початок тижня, друга — середину, третя — кінець. Довжина тексту не більше 150 слів. Форматуй назви карт як *[Назва Карти]*.`;
+    const result = await generateContent(prompt, 'Personal Tarot Weekly');
+    const formatted = formatTarotCardBold(result);
+
+    return `✨ *Ваше індивідуальне передбачення Таро на тиждень* ✨\n\n${formatted}`;
+}
+
+async function generatePersonalTarotMonthly() {
+    const prompt = `Вибери ОДНУ ключову карту Таро (з повної колоди, 78 карт) для індивідуального передбачення на *місяць*. Назви цю карту. Склади глибокий, змістовний прогноз на місяць, описуючи основний енергетичний фокус, можливі виклики та головну пораду. Довжина тексту не більше 200 слів. Форматуй назву карти як *[Назва Карти]*.`;
+    const result = await generateContent(prompt, 'Personal Tarot Monthly');
+    const formatted = formatTarotCardBold(result);
+
+    return `✨ *Ваше індивідуальне передбачення Таро на місяць* ✨\n\n${formatted}`;
+}
+
+async function generatePersonalTarotReading() {
+    const prompt = `Вибери одну випадкову карту з повної колоди Таро (78 карт) для індивідуального передбачення на день. Надай її назву українською та склади надихаючий, особистісний прогноз. Зверни увагу на ключові аспекти: настрій, енергія, порада. Формат: *[Назва Карти]*. Далі детальний, особистий прогноз. Довжина тексту не більше 100 слів.`;
+    const result = await generateContent(prompt, 'Personal Tarot Reading');
+    const formatted = formatTarotCardBold(result);
+
+    return `✨ *Ваше індивідуальне передбачення Таро на день* ✨\n\n${formatted}`;
+}
+
+bot.use(async (ctx, next) => {
+    const userId = ctx.from?.id;
+    if (!userId) return next();
+
+    if (userGeneratingState[userId]) {
+        try {
+            await ctx.replyWithMarkdownV2(
+                sanitizeMarkdown('⏳ Ваш персональний розклад ще генерується\\. Зачекайте кілька секунд і спробуйте знову\\.'),
+                { disable_web_page_preview: true }
+            );
+        } catch {}
+        return;
+    }
+    return next();
+});
+
+async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limitMs) {
+    const userId = ctx.from.id;
+    const now = Date.now();
+    const lastTime = limits[userId] || 0;
+    const diff = limitMs - (now - lastTime);
+
+    if (diff > 0) {
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        return ctx.replyWithMarkdownV2(
+            sanitizeMarkdown(`⏳ Ви вже отримували прогноз ${type}. Спробуйте через ${hours} год. ${minutes} хв.`)
+        );
+    }
+
+    limits[userId] = now;
+    userGeneratingState[userId] = true;
+    await ctx.reply('🔮 Зорі вже шикуються, готую передбачення...');
+
+    const timeout = setTimeout(() => {
+        console.warn(`[Timeout] Генерація ${type} для ${userId} перевищила ${GENERATION_TIMEOUT_MS}мс`);
+        userGeneratingState[userId] = false;
+    }, GENERATION_TIMEOUT_MS);
+
+    try {
+        const text = await generatorFn();
+        await ctx.replyWithMarkdownV2(sanitizeMarkdown(text));
+    } catch (err) {
+        console.error(err);
+        delete limits[userId];
+        await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.');
+    } finally {
+        clearTimeout(timeout);
+        userGeneratingState[userId] = false;
+    }
+}
+
+const predictionKeyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('На день ☀️', 'PREDICT_DAY')],
+    [Markup.button.callback('На тиждень 📅', 'PREDICT_WEEK')],
+    [Markup.button.callback('На місяць 🌕', 'PREDICT_MONTH')]
+]);
+
+function guardGeneratingState(ctx, next) {
+    const userId = ctx.from.id;
+    if (userGeneratingState[userId]) {
+        return ctx.replyWithMarkdownV2(sanitizeMarkdown(`⏳ Вибачте, ваш попередній прогноз ще генерується\\. Зачекайте кілька секунд і спробуйте знову\\.`));
+    }
+    return next();
+}
+
+bot.command('гадаю', guardGeneratingState, (ctx) => {
+    const message = sanitizeMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n_Зверніть увагу, кожен тип має свій ліміт часу._`);
+    ctx.replyWithMarkdownV2(message, {
+        reply_markup: predictionKeyboard
+    });
+});
+
+bot.action('PREDICT_DAY', guardGeneratingState, (ctx) => handleUserPredictionRequest(ctx, 'На день', generatePersonalTarotReading, userDailyLimits, DAILY_LIMIT_MS));
+bot.action('PREDICT_WEEK', guardGeneratingState, (ctx) => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, userWeeklyLimits, WEEKLY_LIMIT_MS));
+bot.action('PREDICT_MONTH', guardGeneratingState, (ctx) => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, userMonthlyLimits, MONTHLY_LIMIT_MS));
+
+bot.start(ctx => {
+    const welcomeMessage = sanitizeMarkdown(
+        'Привіт 🌙 Я бот-астролог Gemini, публікую гороскопи кожен день 🪐\n\n' +
+        'Щоб отримати *індивідуальне передбачення Таро*, скористайтеся командою:\n' +
+        '👉 /гадаю (або просто напишіть мені повідомлення)'
+    );
+    ctx.replyWithMarkdownV2(welcomeMessage);
+});
 
 async function generateHoroscope(sign, promptStyle, dayContext) {
     let basePrompt;
@@ -166,7 +301,7 @@ async function generateTarotReading(dayContext) {
     const exclusionList = usedTarotCardsHistory.join(', ');
     const exclusion = exclusionList ? ` Карта НЕ ПОВИННА бути однією з цих: ${exclusionList}.` : '';
 
-    const prompt = `Вибери одну випадкову карту з повної колоди Таро (78 карт), включаючи Молодші Аркани. Надай її назву українською та короткий, позитивний опис її значення для прогнозу на ${dayContext}. Формат: *[Назва Карти]*. Опис та прогноз. Довжина тексту не більше 70 слів.${exclusion}`;
+    const prompt = `Вибери одну випадкову карту з повної колоди Таро (78 карт, включаючи Молодші Аркани). Надай її назву українською та короткий, позитивний опис її значення для прогнозу на ${dayContext}. Формат: *[Назва Карти]*. Опис та прогноз. Довжина тексту не більше 70 слів.${exclusion}`;
 
     const result = await generateContent(prompt, 'Tarot (78 cards)');
     saveUsedTarotCard(result);
@@ -193,7 +328,6 @@ async function generateDailyWish(dateString) {
     return generateContent(prompt, 'Daily Wish');
 }
 
-// ОНОВЛЕНО: Використовуємо usedTarotCardsHistory та вимагаємо 78 карт
 async function generateDailyTarotAnalysis(dayContext) {
     const exclusionList = usedTarotCardsHistory.join(', ');
     const exclusion = exclusionList ? ` УВАГА! НЕ використовуй карту з назвою, яка є однією з цих: ${exclusionList}.` : '';
@@ -210,7 +344,8 @@ async function publishSeriousHoroscope() {
     const today = new Date();
     const tomorrow = new Date(today.getTime() + (24 * 60 * 60 * 1000));
     const dateString = `${tomorrow.getDate()} ${getMonthNameUa(tomorrow)}`;
-    let message = `*Гороскоп на завтра ✨ ${dateString}*\n\n`;
+
+    let message = `*Гороскоп на завтра 🗓️ ${dateString}*\n\n`;
 
     for (const sign of ZODIAC_SIGNS) {
         console.log(`⏳ Генерация серьезного гороскопа для ${sign.name}...`);
@@ -219,7 +354,7 @@ async function publishSeriousHoroscope() {
         await new Promise(r => setTimeout(r, 3000));
     }
 
-    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
+    message += `\\[Код Долі📌\\](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
     await publishPost(message, 'Серйозний гороскоп');
 }
 
@@ -227,19 +362,19 @@ async function publishFunnyHoroscope() {
     console.log('--- Начинается публикация КУМЕДНОГО гороскопа ---');
     const today = new Date();
     const dateString = `${today.getDate()} ${getMonthNameUa(today)}`;
-    let message = `*Кумедний гороскоп на сьогодні ✨ ${dateString}*\n\n`;
+
+    let message = `*Кумедний гороскоп на сьогодні 😂 ${dateString}*\n\n`;
 
     for (const sign of ZODIAC_SIGNS) {
         console.log(`⏳ Генерация кумедного гороскопа для ${sign.name}...`);
         const text = await generateHoroscope(sign.name, 'funny', 'сьогодні');
-        message += `${sign.emoji} *${sign.name}* - ${text}\n\n`;
+        message += `${sign.emoji} *${sign.name}* \\- ${text}\n\n`;
         await new Promise(r => setTimeout(r, 3000));
     }
 
-    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
+    message += `\\[Код Долі📌\\](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
     await publishPost(message, 'Кумедний гороскоп');
 }
-
 
 async function publishTarotReading() {
     console.log('--- Начинается публикация КАРТЫ ДНЯ ТАРО ---');
@@ -248,10 +383,10 @@ async function publishTarotReading() {
 
     const tarotText = await generateTarotReading('сьогодні');
 
-    let message = `*Карта Дня Таро 🔮 ${dateString}*\n\n`;
+    let message = `*Карта Дня Таро 🔮✨ ${dateString}*\n\n`;
     message += `${tarotText}\n\n`;
-    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
 
+    message += `\\[Код Долі📌\\](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
     await publishPost(message, 'Карта Дня Таро');
 }
 
@@ -266,10 +401,10 @@ async function publishCompatibilityReading() {
 
     const compatibilityText = await generateCompatibilityReading(sign1.name, sign2.name);
 
-    let message = `*Гороскоп сумісності 💖 ${sign1.emoji} ${sign1.name} & ${sign2.emoji} ${sign2.name}*\n\n`;
+    let message = `*Гороскоп сумісності ❤️ ${sign1.emoji} ${sign1.name} & ${sign2.emoji} ${sign2.name}*\n\n`;
     message += `${compatibilityText}\n\n`;
-    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
 
+    message += `\\[Код Долі📌\\](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
     await publishPost(message, 'Гороскоп сумісності');
 }
 
@@ -277,7 +412,7 @@ async function publishWeeklyHoroscope() {
     console.log('--- Начинается публикация ЕЖЕНЕДЕЛЬНОГО гороскопа ---');
 
     const dateString = calculateWeekRange(new Date());
-    let message = `*Що чекає на тижні? ✨ ${dateString}*\n\n`;
+    let message = `*Що чекає на цьому тижні? 🗓️ ${dateString}*\n\n`;
 
     for (const sign of ZODIAC_SIGNS) {
         console.log(`⏳ Генерация еженедельного гороскопа для ${sign.name}...`);
@@ -286,7 +421,7 @@ async function publishWeeklyHoroscope() {
         await new Promise(r => setTimeout(r, 3000));
     }
 
-    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
+    message += `\\[Код Долі📌\\](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
     await publishPost(message, 'Еженедельный гороскоп');
 }
 
@@ -301,8 +436,8 @@ async function publishNumerologyReading() {
     let message = `*Нумерологія Дня 🔢 ${dateStringUa}*\n\n`;
     message += `*Ваше число дня: ${number}*\n\n`;
     message += `${numerologyText}\n\n`;
-    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
 
+    message += `\\[Код Долі📌\\](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
     await publishPost(message, 'Нумерологія Дня');
 }
 
@@ -313,10 +448,10 @@ async function publishDailyWish() {
 
     const wishText = await generateDailyWish(dateStringUa);
 
-    let message = `*Доброго ранку! ☕ Побажання на ${dateStringUa}*\n\n`;
+    let message = `*Доброго ранку! ☕ Побажання на ${dateStringUa}* ✨\n\n`;
     message += `${wishText}\n\n`;
-    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
 
+    message += `\\[Код Долі📌\\](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
     await publishPost(message, 'Побажання на День');
 }
 
@@ -327,10 +462,10 @@ async function publishDailyTarotAnalysis() {
 
     const analysisText = await generateDailyTarotAnalysis('сьогоднішній вечір');
 
-    let message = `*Розбір Карти Таро 🃏 ${dateStringUa}*\n\n`;
+    let message = `*Розбір Карти Таро на вечір 🃏🌙 ${dateStringUa}*\n\n`;
     message += `${analysisText}\n\n`;
-    message += `[Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
 
+    message += `\\[Код Долі📌\\](${TELEGRAM_CONFIG.CHANNEL_LINK})\n`;
     await publishPost(message, 'Щоденний Розбір Таро (Одна Карта)');
 }
 
@@ -358,19 +493,21 @@ console.log(`🗓️ CRON (Тиждень) встановлено на 09:00 щ�
 cron.schedule('0 8 * * *', publishNumerologyReading, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Нумерологія) встановлено на 08:00 щоденно (${TIMEZONE}).`);
 
-bot.start(ctx => ctx.reply('Привіт 🌙 Я бот-астролог Gemini, публікую гороскопи кожен день 🪐'));
-
 async function handleTestCommand(ctx, publishFunction, postName) {
+    if (ctx.from.id.toString() !== TELEGRAM_CONFIG.ADMIN_ID.toString()) {
+        return ctx.reply('Ці команди доступні лише для адміністратора.');
+    }
+
     ctx.reply(`🚀 Тестова публікація (${postName}) запущена у фоновому режимі. Це займе час.`);
     const targetChatId = ctx.chat.id;
 
     publishFunction()
         .then(() => {
-            bot.telegram.sendMessage(targetChatId, `✅ Тестова публікація (${postName}) завершена! Перевірте канал.`, { reply_to_message_id: ctx.message.message_id });
+            bot.telegram.sendMessage(targetChatId, sanitizeMarkdown(`✅ *Тестова публікація* (${postName}) завершена\\! Перевірте канал\\.`), { parse_mode: 'MarkdownV2', reply_to_message_id: ctx.message.message_id });
         })
         .catch((err) => {
             console.error(`⚠️ Критична помилка при тестовій публікації (${postName}):`, err);
-            bot.telegram.sendMessage(targetChatId, `⚠️ Критична помилка: ${err.message}. Подробиці у консолі.`, { reply_to_message_id: ctx.message.message_id });
+            bot.telegram.sendMessage(targetChatId, sanitizeMarkdown(`⚠️ *Критична помилка*: ${err.message}\. Подробиці у консолі\\.`), { parse_mode: 'MarkdownV2', reply_to_message_id: ctx.message.message_id });
         });
 }
 
@@ -383,6 +520,19 @@ bot.command('number', ctx => handleTestCommand(ctx, publishNumerologyReading, '�
 bot.command('wish', ctx => handleTestCommand(ctx, publishDailyWish, 'Побажання Дня'));
 bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAnalysis, 'Розбір Таро (Одна Карта)'));
 
+bot.on('text', async (ctx) => {
+    const userId = ctx.from.id;
+
+    if (ctx.message.text.startsWith('/')) return;
+
+    if (userGeneratingState[userId]) {
+        return ctx.replyWithMarkdownV2(sanitizeMarkdown(`⏳ Вибачте, ваш попередній прогноз ще генерується\\. Зачекайте кілька секунд і спробуйте знову\\.`));
+    }
+
+    const message = sanitizeMarkdown(`🤔 Ви помилилися або ввели невідому команду\\. Оберіть потрібний прогноз нижче:`);
+
+    await ctx.replyWithMarkdownV2(message, predictionKeyboard);
+});
 
 bot.launch();
 console.log('🌟 Gemini бот запущен і очікує розкладу');
