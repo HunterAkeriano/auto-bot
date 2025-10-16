@@ -6,7 +6,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 dotenv.config();
 
 const TELEGRAM_CONFIG = {
+    // ЗМІНА: Використовуємо ADMIN_ID для особистої перевірки
     ADMIN_ID: process.env.ADMIN_ID,
+    // НОВЕ: ID каналу для публікацій (потрібно додати у .env)
+    CHANNEL_CHAT_ID: process.env.CHANNEL_CHAT_ID,
     CHANNEL_LINK: process.env.CHANNEL_LINK,
     BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
 };
@@ -32,8 +35,8 @@ const ZODIAC_SIGNS = [
 ];
 const tarotEmojis = ['🔮', '🃏', '🌙', '✨', '🌟', '♾️', '🔥', '💫'];
 
-if (!TELEGRAM_CONFIG.BOT_TOKEN || !GEMINI_CONFIG.API_KEY || !TELEGRAM_CONFIG.ADMIN_ID || !TELEGRAM_CONFIG.CHANNEL_LINK) {
-    console.error('❌ Ошибка: Не найдены все необходимые переменные окружения. Проверьте файл .env');
+if (!TELEGRAM_CONFIG.BOT_TOKEN || !GEMINI_CONFIG.API_KEY || !TELEGRAM_CONFIG.ADMIN_ID || !TELEGRAM_CONFIG.CHANNEL_LINK || !TELEGRAM_CONFIG.CHANNEL_CHAT_ID) {
+    console.error('❌ Ошибка: Не найдены все необходимые переменные окружения. Проверьте, что ADMIN_ID и CHANNEL_CHAT_ID добавлены в .env');
     process.exit(1);
 }
 
@@ -123,8 +126,7 @@ function formatTarotCardBold(text) {
 }
 
 /**
- * 1. НОВА ФУНКЦІЯ: Перетворення Markdown на HTML для публікацій у канал.
- * Це більш надійний спосіб уникнути помилок Bad Request.
+ * 1. ФУНКЦІЯ ПУБЛІКАЦІЇ: Перетворення Markdown на HTML для каналу.
  */
 function convertToHtml(text) {
     if (!text) return '';
@@ -143,6 +145,9 @@ function convertToHtml(text) {
     return htmlText;
 }
 
+/**
+ * 2. ФУНКЦІЯ ПЕРЕДБАЧЕНЬ: MarkdownV2 для особистих повідомлень.
+ */
 function sanitizeUserMarkdown(text) {
     if (!text) return '';
     const markdownV2ReservedChars = /([_\[\]\(\)~`>#+\-=|{}.!\\/])/g;
@@ -152,18 +157,20 @@ function sanitizeUserMarkdown(text) {
         .replace(/([\r\n]{2,})/g, '\n\n');
 }
 
+/**
+ * 3. КРИТИЧНЕ ВИПРАВЛЕННЯ: publishPost тепер використовує CHANNEL_CHAT_ID.
+ */
 async function publishPost(rawMessage, postName) {
     const htmlMessage = convertToHtml(rawMessage);
-
     const finalLinkHtml = `<a href="${TELEGRAM_CONFIG.CHANNEL_LINK}">Код Долі📌</a>\n`;
-
     const finalMessage = htmlMessage + finalLinkHtml;
 
     try {
-        await bot.telegram.sendMessage(TELEGRAM_CONFIG.ADMIN_ID, finalMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
-        console.log(`✅ ${postName} успішно опублікований!`);
+        // !!! ПУБЛІКУЄМО В КАНАЛ !!!
+        await bot.telegram.sendMessage(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, finalMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
+        console.log(`✅ ${postName} успішно опублікований у канал!`);
     } catch (telegramError) {
-        console.error(`❌ Ошибка отправки ${postName}:`, telegramError.message);
+        console.error(`❌ Ошибка отправки ${postName} в канал:`, telegramError.message);
         throw new Error('Telegram Publish Error: ' + telegramError.message);
     }
 }
@@ -197,6 +204,8 @@ async function generateContent(prompt, sign = 'General') {
         }
     }
 }
+
+// ... (функції generatePersonalTarotWeekly, generatePersonalTarotMonthly, generatePersonalTarotReading залишаються без змін)
 
 async function generatePersonalTarotWeekly() {
     const prompt = `Вибери ТРИ випадкові карти Таро (з повної колоди, 78 карт) для індивідуального передбачення на *тиждень*. Назви ці карти. Склади надихаючий прогноз, де перша карта описує початок тижня, друга — середину, третя — кінець. Довжина тексту не більше 150 слів. Форматуй назви карт як *[Назва Карти]*.`;
@@ -238,6 +247,7 @@ bot.use(async (ctx, next) => {
     return next();
 });
 
+// handleUserPredictionRequest завжди відповідає користувачу в особистий чат
 async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limitMs) {
     const userId = ctx.from.id;
     const now = Date.now();
@@ -303,6 +313,8 @@ bot.start(ctx => {
     ctx.replyWithMarkdownV2(welcomeMessage);
 });
 
+// ... (Усі функції generate... залишаються без змін)
+
 async function generateHoroscope(sign, promptStyle, dayContext) {
     let basePrompt;
     const wordLimit = promptStyle === 'serious' ? 35 : 20;
@@ -359,6 +371,8 @@ async function generateDailyTarotAnalysis(dayContext) {
     saveUsedTarotCard(result);
     return result;
 }
+
+// Усі функції publish... використовують publishPost, який відправляє в канал.
 
 async function publishSeriousHoroscope() {
     console.log('--- Начинается публикация СЕРЬЕЗНОГО гороскопа ---');
@@ -482,6 +496,7 @@ async function publishDailyTarotAnalysis() {
     await publishPost(message, 'Щоденний Розбір Таро (Одна Карта)');
 }
 
+// CRON налаштований для виклику publishPost, який тепер відправляє в канал
 cron.schedule('0 19 * * *', publishDailyTarotAnalysis, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Розбір Таро - Одна Карта) встановлено на 19:00 щоденно (${TIMEZONE}).`);
 
@@ -507,22 +522,28 @@ cron.schedule('0 8 * * *', publishNumerologyReading, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Нумерологія) встановлено на 08:00 щоденно (${TIMEZONE}).`);
 
 async function handleTestCommand(ctx, publishFunction, postName) {
-    if (ctx.from.id.toString() !== TELEGRAM_CONFIG.ADMIN_ID.toString()) {
-        return ctx.reply('Ці команди доступні лише для адміністратора.');
+    const userId = ctx.from.id.toString();
+
+    if (userId !== TELEGRAM_CONFIG.ADMIN_ID.toString()) {
+        return ctx.reply('🚫 Ця команда доступна лише адміністратору.');
     }
 
-    ctx.reply(`🚀 Тестова публікація (${postName}) запущена у фоновому режимі. Це займе час.`);
-    const targetChatId = ctx.chat.id;
+    // сообщаем в ЛС, что пошла публикация
+    await ctx.reply(`🚀 Тестова публікація (${postName}) розпочата! Зачекайте кілька секунд...`);
 
-    publishFunction()
-        .then(() => {
-            bot.telegram.sendMessage(targetChatId, sanitizeUserMarkdown(`✅ *Тестова публікація* (${postName}) завершена\\! Перевірте канал\\.`), { parse_mode: 'MarkdownV2', reply_to_message_id: ctx.message.message_id });
-        })
-        .catch((err) => {
-            console.error(`⚠️ Критична помилка при тестовій публікації (${postName}):`, err);
-            bot.telegram.sendMessage(targetChatId, sanitizeUserMarkdown(`⚠️ *Критична помилка*: ${err.message}\. Подробиці у консолі\\.`), { parse_mode: 'MarkdownV2', reply_to_message_id: ctx.message.message_id });
-        });
+    try {
+        // запускаем функцию публікації (вона завжди публікує в канал)
+        await publishFunction();
+
+        // уведомляем в ЛС про успіх
+        await ctx.reply(`✅ Публікація "${postName}" завершена та відправлена у канал!`);
+
+    } catch (err) {
+        console.error(`❌ Помилка при тестовій публікації (${postName}):`, err);
+        await ctx.reply(`⚠️ Помилка: ${err.message}`);
+    }
 }
+
 
 bot.command('test', ctx => handleTestCommand(ctx, publishSeriousHoroscope, 'Serious'));
 bot.command('humor', ctx => handleTestCommand(ctx, publishFunnyHoroscope, 'Funny'));
