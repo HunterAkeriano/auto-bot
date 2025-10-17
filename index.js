@@ -241,7 +241,7 @@ bot.use(async (ctx, next) => {
             const replyMessage = sanitizeUserMarkdown('⏳ *Ваш персональний розклад вже генерується*\\. Зачекайте кілька секунд, будь ласка\\.');
             await ctx.replyWithMarkdownV2(
                 replyMessage,
-                { reply_to_message_id: ctx.message?.message_id, reply_markup: predictionReplyKeyboard }
+                { reply_to_message_id: ctx.message?.message_id, reply_markup: predictionReplyKeyboard, disable_web_page_preview: true }
             );
         } catch (e) {
             console.error('Error sending generating state message:', e.message);
@@ -262,7 +262,7 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limit
         const minutes = Math.floor((diff % 3600000) / 60000);
         return ctx.replyWithMarkdownV2(
             sanitizeUserMarkdown(`⏳ Ви вже отримували прогноз ${type}. Спробуйте через ${hours} год. ${minutes} хв.`),
-            { reply_markup: predictionReplyKeyboard }
+            { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true }
         );
     }
 
@@ -276,14 +276,18 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limit
         try {
             userGeneratingState[userId] = true;
 
-            const text = await generatorFn();
-            await ctx.replyWithMarkdownV2(sanitizeUserMarkdown(text), { reply_markup: predictionReplyKeyboard });
+            const rawText = await generatorFn();
+
+            const channelLinkMarkdown = `\n\n[Гороскопи, передбачення та інше тут: Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})`;
+            const finalReplyText = sanitizeUserMarkdown(rawText) + channelLinkMarkdown;
+
+            await ctx.replyWithMarkdownV2(finalReplyText, { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
 
             limits[userId] = now;
 
         } catch (err) {
             console.error(`[Error] Помилка генерації для ${userId}:`, err);
-            await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.', { reply_markup: predictionReplyKeyboard });
+            await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.', { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
         } finally {
             clearTimeout(timeout);
             delete userGeneratingState[userId];
@@ -317,7 +321,7 @@ bot.start(ctx => {
         'Оберіть свій *індивідуальний розклад Таро* за допомогою кнопок нижче, або скористайтеся командою:\n' +
         '👉 /gadaniye'
     );
-    ctx.replyWithMarkdownV2(welcomeMessage, { reply_markup: predictionReplyKeyboard });
+    ctx.replyWithMarkdownV2(welcomeMessage, { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
 });
 
 async function generateHoroscope(sign, promptStyle, dayContext) {
@@ -518,7 +522,7 @@ cron.schedule('0 10 * * *', publishTarotReading, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Таро) встановлено на 10:00 (${TIMEZONE}).`);
 
 cron.schedule('0 20 * * 5', publishCompatibilityReading, { timezone: TIMEZONE });
-console.log(`🗓️ CRON (Сумісність) встановлено на 20:00 щоп\'ятниці (${TIMEZONE}).`);
+console.log(`🗓️ CRON (Сумісність) встановлено на 20:00 щоп'ятниці (${TIMEZONE}).`);
 
 cron.schedule('0 9 * * 1', publishWeeklyHoroscope, { timezone: TIMEZONE });
 console.log(`🗓️ CRON (Тиждень) встановлено на 09:00 щопонеділка (${TIMEZONE}).`);
@@ -562,7 +566,7 @@ bot.command('gadaniye', async (ctx) => {
 
 bot.command('show_menu', async (ctx) => {
     const message = sanitizeUserMarkdown(`🔮 *Клавіатура відновлена.* Оберіть потрібний прогноз нижче:`);
-    await ctx.replyWithMarkdownV2(message, { reply_markup: predictionReplyKeyboard });
+    await ctx.replyWithMarkdownV2(message, { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
 });
 
 bot.command('hide_menu', async (ctx) => {
@@ -580,7 +584,7 @@ bot.on('text', async (ctx) => {
 
     if (!['На день ☀️', 'На тиждень 📅', 'На місяць 🌕'].includes(text)) {
         const message = sanitizeUserMarkdown(`🤔 Ви ввели невідому команду\\. Оберіть потрібний прогноз нижче:`);
-        await ctx.replyWithMarkdownV2(message, { reply_markup: predictionReplyKeyboard });
+        await ctx.replyWithMarkdownV2(message, { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
     }
 });
 
