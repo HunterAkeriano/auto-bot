@@ -236,12 +236,21 @@ bot.use(async (ctx, next) => {
     const userId = ctx.from?.id;
     if (!userId) return next();
 
+    const isPrivate = ctx.chat?.type === 'private';
+    const replyOptions = {
+        reply_to_message_id: ctx.message?.message_id,
+        disable_web_page_preview: true
+    };
+    if (isPrivate) {
+        replyOptions.reply_markup = predictionReplyKeyboard;
+    }
+
     if (userGeneratingState[userId]) {
         try {
             const replyMessage = sanitizeUserMarkdown('⏳ *Ваш персональний розклад вже генерується*\\. Зачекайте кілька секунд, будь ласка\\.');
             await ctx.replyWithMarkdownV2(
                 replyMessage,
-                { reply_to_message_id: ctx.message?.message_id, reply_markup: predictionReplyKeyboard, disable_web_page_preview: true }
+                replyOptions
             );
         } catch (e) {
             console.error('Error sending generating state message:', e.message);
@@ -256,13 +265,21 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limit
     const now = Date.now();
     const lastTime = limits[userId] || 0;
     const diff = limitMs - (now - lastTime);
+    const isPrivate = ctx.chat.type === 'private';
+
+    const replyOptions = {
+        disable_web_page_preview: true
+    };
+    if (isPrivate) {
+        replyOptions.reply_markup = predictionReplyKeyboard;
+    }
 
     if (diff > 0) {
         const hours = Math.floor(diff / 3600000);
         const minutes = Math.floor((diff % 3600000) / 60000);
         return ctx.replyWithMarkdownV2(
             sanitizeUserMarkdown(`⏳ Ви вже отримували прогноз ${type}. Спробуйте через ${hours} год. ${minutes} хв.`),
-            { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true }
+            replyOptions
         );
     }
 
@@ -281,13 +298,13 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limit
             const channelLinkMarkdown = `\n\n[Гороскопи, передбачення та інше тут: Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})`;
             const finalReplyText = sanitizeUserMarkdown(rawText) + channelLinkMarkdown;
 
-            await ctx.replyWithMarkdownV2(finalReplyText, { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
+            await ctx.replyWithMarkdownV2(finalReplyText, replyOptions);
 
             limits[userId] = now;
 
         } catch (err) {
             console.error(`[Error] Помилка генерації для ${userId}:`, err);
-            await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.', { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
+            await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.', replyOptions);
         } finally {
             clearTimeout(timeout);
             delete userGeneratingState[userId];
@@ -316,12 +333,19 @@ bot.hears('На місяць 🌕', (ctx) =>
 );
 
 bot.start(ctx => {
+    const isPrivate = ctx.chat.type === 'private';
+
+    const replyOptions = { disable_web_page_preview: true };
+    if (isPrivate) {
+        replyOptions.reply_markup = predictionReplyKeyboard;
+    }
+
     const welcomeMessage = sanitizeUserMarkdown(
         'Привіт 🌙 Я бот-астролог Микола Бондарь, публікую гороскопи кожен день 🪐\n\n' +
         'Оберіть свій *індивідуальний розклад Таро* за допомогою кнопок нижче, або скористайтеся командою:\n' +
         '👉 /gadaniye'
     );
-    ctx.replyWithMarkdownV2(welcomeMessage, { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
+    ctx.replyWithMarkdownV2(welcomeMessage, replyOptions);
 });
 
 async function generateHoroscope(sign, promptStyle, dayContext) {
@@ -560,13 +584,27 @@ bot.command('number', ctx => handleTestCommand(ctx, publishNumerologyReading, '�
 bot.command('wish', ctx => handleTestCommand(ctx, publishDailyWish, 'Побажання Дня'));
 bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAnalysis, 'Розбір Таро (Одна Карта)'));
 bot.command('gadaniye', async (ctx) => {
+    const isPrivate = ctx.chat.type === 'private';
+
+    const replyOptions = { disable_web_page_preview: true };
+    if (isPrivate) {
+        replyOptions.reply_markup = predictionKeyboard;
+    }
+
     const message = sanitizeUserMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n Зверніть увагу, кожен тип має свій ліміт часу.`);
-    await ctx.replyWithMarkdownV2(message, { reply_markup: predictionKeyboard });
+    await ctx.replyWithMarkdownV2(message, replyOptions);
 });
 
 bot.command('show_menu', async (ctx) => {
+    const isPrivate = ctx.chat.type === 'private';
+
+    const replyOptions = { disable_web_page_preview: true };
+    if (isPrivate) {
+        replyOptions.reply_markup = predictionReplyKeyboard;
+    }
+
     const message = sanitizeUserMarkdown(`🔮 *Клавіатура відновлена.* Оберіть потрібний прогноз нижче:`);
-    await ctx.replyWithMarkdownV2(message, { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
+    await ctx.replyWithMarkdownV2(message, replyOptions);
 });
 
 bot.command('hide_menu', async (ctx) => {
