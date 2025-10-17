@@ -173,12 +173,17 @@ async function publishPost(rawMessage, postName) {
 
 async function generateContent(prompt, sign = 'General') {
     const MAX_RETRIES = 3;
-    const RETRY_DELAY = 5000;
+    const BASE_RETRY_DELAY = 5000;
+    const REQUEST_TIMEOUT = 90000;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             console.log(`[${sign}] Спроба генерації №${attempt}...`);
-            const result = await model.generateContent(prompt);
+            const result = await model.generateContent(prompt, {
+                requestOptions: {
+                    timeout: REQUEST_TIMEOUT
+                }
+            });
 
             const generatedText = result.response.text().trim().replace(/[\r\n]{2,}/g, '\n');
 
@@ -196,7 +201,9 @@ async function generateContent(prompt, sign = 'General') {
                 return `❌ Зорі сьогодні нерозбірливі, або ж канал зв'язку перервано. Спробуємо пізніше!`;
             }
 
-            await new Promise(r => setTimeout(r, RETRY_DELAY));
+            const delay = BASE_RETRY_DELAY * Math.pow(2, attempt - 1);
+            console.log(`[${sign}] Очікування перед наступною спробою: ${delay / 1000} с.`);
+            await new Promise(r => setTimeout(r, delay));
         }
     }
 }
