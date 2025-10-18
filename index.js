@@ -53,21 +53,43 @@ const model = genAI.getGenerativeModel({ model: GEMINI_CONFIG.MODEL });
 const TIMEZONE = 'Europe/Kiev';
 
 const TAROT_HISTORY_FILE = path.resolve('./tarot_history.json');
+const USERS_FILE = path.resolve('./users_store.json');
+
 const MAX_TAROT_CARDS = 78;
 let usedTarotCardsHistory = [];
+let usersStore = { users: {} };
 
 if (fs.existsSync(TAROT_HISTORY_FILE)) {
-    try {
-        usedTarotCardsHistory = JSON.parse(fs.readFileSync(TAROT_HISTORY_FILE, 'utf-8'));
-    } catch {
-        usedTarotCardsHistory = [];
-    }
+    try { usedTarotCardsHistory = JSON.parse(fs.readFileSync(TAROT_HISTORY_FILE, 'utf-8')); } catch { usedTarotCardsHistory = []; }
 } else {
     fs.writeFileSync(TAROT_HISTORY_FILE, JSON.stringify([], null, 2));
 }
 
+if (fs.existsSync(USERS_FILE)) {
+    try { usersStore = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8')) || { users: {} }; } catch { usersStore = { users: {} }; }
+} else {
+    fs.writeFileSync(USERS_FILE, JSON.stringify({ users: {} }, null, 2));
+}
+
 function persistTarotHistory() {
     fs.writeFileSync(TAROT_HISTORY_FILE, JSON.stringify(usedTarotCardsHistory, null, 2));
+}
+
+function persistUsersStore() {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(usersStore, null, 2));
+}
+
+function getUserRecord(userId) {
+    const key = String(userId);
+    if (!usersStore.users[key]) {
+        usersStore.users[key] = {
+            lastDayTs: 0,
+            lastWeekTs: 0,
+            lastMonthTs: 0,
+            profile: {}
+        };
+    }
+    return usersStore.users[key];
 }
 
 function saveUsedTarotCard(generatedText) {
@@ -80,15 +102,12 @@ function saveUsedTarotCard(generatedText) {
     persistTarotHistory();
 }
 
-const userDailyLimits = {};
-const userWeeklyLimits = {};
-const userMonthlyLimits = {};
-const userGeneratingState = {};
-
+const GENERATION_TIMEOUT_MS = 350000;
 const DAILY_LIMIT_MS = 24 * 60 * 60 * 1000;
 const WEEKLY_LIMIT_MS = 7 * DAILY_LIMIT_MS;
 const MONTHLY_LIMIT_MS = 30 * DAILY_LIMIT_MS;
-const GENERATION_TIMEOUT_MS = 350000;
+
+const userGeneratingState = {};
 
 const predictionReplyKeyboard = Markup.keyboard([
     ['На день ☀️', 'На тиждень 📅', 'На місяць 🌕']
@@ -179,7 +198,7 @@ async function generateContent(prompt, sign = 'General') {
 }
 
 async function generatePersonalTarotWeekly() {
-    const prompt = `Вибери ТРИ випадкові карти Таро для індивідуального передбачення на тиждень. Форматуй назви карт як *[Назва Карти]*. Коротко опиши початок, середину і кінець тижня. До 150 слів.`;
+    const prompt = `Вибери ТРИ випадкові карти Таро для індивідуального передбачення на тиждень. Форматуй назви як *[Назва Карти]*. Коротко опиши початок, середину і кінець тижня. До 150 слів.`;
     const result = await generateContent(prompt, 'Personal Tarot Weekly');
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на тиждень* ✨\n\n${formatted}`;
@@ -210,10 +229,11 @@ bot.use(async (ctx, next) => {
     return next();
 });
 
-async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limitMs) {
-    const userId = ctx.from.id;
+async function handleUserPredictionRequest(ctx, type, generatorFn, limitKey, limitMs) {
+    const userId = String(ctx.from.id);
     const now = Date.now();
-    const lastTime = limits[userId] || 0;
+    const user = getUserRecord(userId);
+    const lastTime = user[limitKey] || 0;
     const diff = limitMs - (now - lastTime);
 
     if (diff > 0) {
@@ -238,7 +258,8 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limits, limit
             const channelLinkMarkdown = `\n\n[Гороскопи та розклади у нашому каналі: Код Долі📌](${TELEGRAM_CONFIG.CHANNEL_LINK})`;
             const finalReplyText = sanitizeUserMarkdown(rawText) + channelLinkMarkdown;
             await ctx.replyWithMarkdownV2(finalReplyText, { reply_markup: predictionReplyKeyboard, disable_web_page_preview: true });
-            limits[userId] = now;
+            user[limitKey] = now;
+            persistUsersStore();
         } catch {
             await ctx.reply('⚠️ Сталася помилка. Спробуйте пізніше.', { reply_markup: predictionReplyKeyboard });
         } finally {
@@ -256,13 +277,13 @@ const predictionKeyboard = Markup.inlineKeyboard([
     [Markup.button.callback('На місяць 🌕', 'PREDICT_MONTH')]
 ]);
 
-bot.action('PREDICT_DAY', ctx => handleUserPredictionRequest(ctx, 'На день', generatePersonalTarotReading, userDailyLimits, DAILY_LIMIT_MS));
-bot.action('PREDICT_WEEK', ctx => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, userWeeklyLimits, WEEKLY_LIMIT_MS));
-bot.action('PREDICT_MONTH', ctx => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, userMonthlyLimits, MONTHLY_LIMIT_MS));
+bot.action('PREDICT_DAY', ctx => handleUserPredictionRequest(ctx, 'На день', generatePersonalTarotReading, 'lastDayTs', DAILY_LIMIT_MS));
+bot.action('PREDICT_WEEK', ctx => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, 'lastWeekTs', WEEKLY_LIMIT_MS));
+bot.action('PREDICT_MONTH', ctx => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, 'lastMonthTs', MONTHLY_LIMIT_MS));
 
-bot.hears('На день ☀️', ctx => handleUserPredictionRequest(ctx, 'На день', generatePersonalTarotReading, userDailyLimits, DAILY_LIMIT_MS));
-bot.hears('На тиждень 📅', ctx => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, userWeeklyLimits, WEEKLY_LIMIT_MS));
-bot.hears('На місяць 🌕', ctx => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, userMonthlyLimits, MONTHLY_LIMIT_MS));
+bot.hears('На день ☀️', ctx => handleUserPredictionRequest(ctx, 'На день', generatePersonalTarotReading, 'lastDayTs', DAILY_LIMIT_MS));
+bot.hears('На тиждень 📅', ctx => handleUserPredictionRequest(ctx, 'На тиждень', generatePersonalTarotWeekly, 'lastWeekTs', WEEKLY_LIMIT_MS));
+bot.hears('На місяць 🌕', ctx => handleUserPredictionRequest(ctx, 'На місяць', generatePersonalTarotMonthly, 'lastMonthTs', MONTHLY_LIMIT_MS));
 
 bot.start(ctx => {
     const welcomeMessage = sanitizeUserMarkdown(
@@ -446,14 +467,17 @@ bot.command('week', ctx => handleTestCommand(ctx, publishWeeklyHoroscope, 'Ти�
 bot.command('number', ctx => handleTestCommand(ctx, publishNumerologyReading, 'Нумерологія Дня'));
 bot.command('wish', ctx => handleTestCommand(ctx, publishDailyWish, 'Побажання Дня'));
 bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAnalysis, 'Розбір Таро (Одна Карта)'));
+
 bot.command('gadaniye', async ctx => {
     const message = sanitizeUserMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n Зверніть увагу, кожен тип має свій ліміт часу.`);
     await ctx.replyWithMarkdownV2(message, predictionKeyboard);
 });
+
 bot.command('show_menu', async ctx => {
     const message = sanitizeUserMarkdown(`🔮 *Клавіатура відновлена.* Оберіть потрібний прогноз нижче:`);
     await ctx.replyWithMarkdownV2(message, { reply_markup: predictionReplyKeyboard });
 });
+
 bot.command('hide_menu', async ctx => {
     await ctx.reply('✅ Клавіатуру було приховано. Натисніть /start або /show_menu, щоб її відновити.', Markup.removeKeyboard());
 });
