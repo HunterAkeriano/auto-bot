@@ -49,7 +49,7 @@ if (
 
 const bot = new Telegraf(TELEGRAM_CONFIG.BOT_TOKEN);
 const genAI = new GoogleGenerativeAI(GEMINI_CONFIG.API_KEY);
-const model = genAI.getGenerativeModel({ model: GEMINI_CONFIG.MODEL });
+const model = genAI.getGenerativeModel({ model: GEMINI_CONFIG.MODEL, generationConfig: {temperature: 0.9} });
 const TIMEZONE = 'Europe/Kiev';
 
 const TAROT_HISTORY_FILE = path.resolve('./tarot_history.json');
@@ -198,21 +198,24 @@ async function generateContent(prompt, sign = 'General') {
 }
 
 async function generatePersonalTarotWeekly() {
-    const prompt = `Вибери ТРИ випадкові карти Таро для індивідуального передбачення на тиждень. Форматуй назви як *[Назва Карти]*. Коротко опиши початок, середину і кінець тижня. До 150 слів.`;
+    const prompt = `Вибери ТРИ випадкові карти Таро для індивідуального передбачення на тиждень. Форматуй назви як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
+Нехай прогноз буде щирим, не лише позитивним. Коротко опиши початок, середину і кінець тижня. До 150 слів.`;
     const result = await generateContent(prompt, 'Personal Tarot Weekly');
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на тиждень* ✨\n\n${formatted}`;
 }
 
 async function generatePersonalTarotMonthly() {
-    const prompt = `Вибери ОДНУ ключову карту Таро для індивідуального передбачення на місяць. Форматуй назву як *[Назва Карти]*. Опиши енергію місяця, виклики та пораду. До 200 слів.`;
+    const prompt = `Вибери ОДНУ ключову карту Таро для індивідуального передбачення на місяць. Форматуй назву як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
+Нехай прогноз буде щирим, не лише позитивним.. До 200 слів.`;
     const result = await generateContent(prompt, 'Personal Tarot Monthly');
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на місяць* ✨\n\n${formatted}`;
 }
 
 async function generatePersonalTarotReading() {
-    const prompt = `Вибери одну карту з повної колоди Таро для індивідуального передбачення на день. Форматуй назву як *[Назва Карти]*. Дай надихаючий прогноз: настрій, енергія, порада. До 100 слів.`;
+    const prompt = `Вибери одну карту з повної колоди Таро для індивідуального передбачення на день. Форматуй назву як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
+Нехай прогноз буде щирим, не лише позитивним., порада. До 100 слів.`;
     const result = await generateContent(prompt, 'Personal Tarot Reading');
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на день* ✨\n\n${formatted}`;
@@ -459,6 +462,19 @@ async function handleTestCommand(ctx, publishFunction, postName) {
     }
 }
 
+function resetAllData() {
+    usedTarotCardsHistory = [];
+    usersStore = { users: {} };
+
+    fs.writeFileSync(TAROT_HISTORY_FILE, JSON.stringify([], null, 2));
+    fs.writeFileSync(USERS_FILE, JSON.stringify({ users: {} }, null, 2));
+
+    console.log('♻️ Усі JSON-файли було успішно очищено!');
+    return true;
+}
+
+
+
 bot.command('test', ctx => handleTestCommand(ctx, publishSeriousHoroscope, 'Serious'));
 bot.command('humor', ctx => handleTestCommand(ctx, publishFunnyHoroscope, 'Funny'));
 bot.command('taro', ctx => handleTestCommand(ctx, publishTarotReading, 'Tarot'));
@@ -467,6 +483,21 @@ bot.command('week', ctx => handleTestCommand(ctx, publishWeeklyHoroscope, 'Ти�
 bot.command('number', ctx => handleTestCommand(ctx, publishNumerologyReading, 'Нумерологія Дня'));
 bot.command('wish', ctx => handleTestCommand(ctx, publishDailyWish, 'Побажання Дня'));
 bot.command('tarot_analysis', ctx => handleTestCommand(ctx, publishDailyTarotAnalysis, 'Розбір Таро (Одна Карта)'));
+bot.command('reset_all', async ctx => {
+    const userId = ctx.from.id.toString();
+    if (userId !== TELEGRAM_CONFIG.ADMIN_ID.toString()) {
+        return ctx.reply('🚫 Ця команда доступна лише адміністратору.');
+    }
+
+    await ctx.reply('⚙️ Починаю повне очищення історії...');
+    try {
+        resetAllData();
+        await ctx.reply('✅ Всі файли історії (TAROT + USERS) успішно скинуті!');
+    } catch (err) {
+        console.error('❌ Помилка при скиданні історії:', err);
+        await ctx.reply(`⚠️ Помилка: ${err.message}`);
+    }
+});
 
 bot.command('gadaniye', async ctx => {
     const message = sanitizeUserMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n Зверніть увагу, кожен тип має свій ліміт часу.`);
