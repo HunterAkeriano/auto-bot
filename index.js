@@ -197,10 +197,27 @@ async function generateContent(prompt, sign = 'General') {
     }
 }
 
+async function generateFastContent(prompt, sign = 'UserRequest') {
+    const MAX_RETRIES = 2;
+    const BASE_RETRY_DELAY = 3000;
+    const REQUEST_TIMEOUT = 80000;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const result = await model.generateContent(prompt, { requestOptions: { timeout: REQUEST_TIMEOUT } });
+            return result.response.text().trim().replace(/[\r\n]{2,}/g, '\n');
+        } catch (error) {
+            console.error(`[${sign}] Помилка швидкої генерації (${attempt}/${MAX_RETRIES}): ${error.message}`);
+            if (attempt === MAX_RETRIES) throw new Error('Generation failed after max retries.');
+            const delay = BASE_RETRY_DELAY * attempt;
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+}
+
 async function generatePersonalTarotWeekly() {
     const prompt = `Вибери ТРИ випадкові карти Таро для індивідуального передбачення на тиждень. Форматуй назви як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
 Нехай прогноз буде щирим, не лише позитивним. Коротко опиши початок, середину і кінець тижня. До 150 слів.`;
-    const result = await generateContent(prompt, 'Personal Tarot Weekly');
+    const result = await generateFastContent(prompt, 'Personal Tarot Weekly');
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на тиждень* ✨\n\n${formatted}`;
 }
@@ -208,7 +225,7 @@ async function generatePersonalTarotWeekly() {
 async function generatePersonalTarotMonthly() {
     const prompt = `Вибери ОДНУ ключову карту Таро для індивідуального передбачення на місяць. Форматуй назву як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
 Нехай прогноз буде щирим, не лише позитивним.. До 200 слів.`;
-    const result = await generateContent(prompt, 'Personal Tarot Monthly');
+    const result = await generateFastContent(prompt, 'Personal Tarot Monthly');
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на місяць* ✨\n\n${formatted}`;
 }
@@ -216,7 +233,7 @@ async function generatePersonalTarotMonthly() {
 async function generatePersonalTarotReading() {
     const prompt = `Вибери одну карту з повної колоди Таро для індивідуального передбачення на день. Форматуй назву як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
 Нехай прогноз буде щирим, не лише позитивним., порада. До 100 слів.`;
-    const result = await generateContent(prompt, 'Personal Tarot Reading');
+    const result = await generateFastContent(prompt, 'Personal Tarot Reading');
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на день* ✨\n\n${formatted}`;
 }
@@ -249,6 +266,7 @@ async function handleUserPredictionRequest(ctx, type, generatorFn, limitKey, lim
     }
 
     await ctx.reply('🔮 У кожної карти є голос. Твоя — вже шепоче...');
+    await ctx.telegram.sendChatAction(ctx.chat.id, 'typing');
 
     const generationPromise = (async () => {
         const timeout = setTimeout(
