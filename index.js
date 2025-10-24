@@ -366,18 +366,54 @@ async function generateDailyTarotAnalysis(dayContext) {
     return result;
 }
 
+async function generateWithRetries(generatorFn, sign = 'Unknown') {
+    let attempt = 0;
+    const MAX_ATTEMPTS = 20;
+
+    while (attempt < MAX_ATTEMPTS) {
+        attempt++;
+        try {
+            console.log(`[${sign}] 🔄 Спроба генерації #${attempt}...`);
+            const result = await generatorFn();
+
+            if (result &&
+                result !== '❌ Не вдалося згенерувати вміст.' &&
+                result.trim().length > 10) {
+                console.log(`[${sign}] ✅ Успішно згенеровано з спроби #${attempt}`);
+                return result;
+            }
+
+            console.warn(`[${sign}] ⚠️ Спроба ${attempt}: невалідний результат, повторюю...`);
+        } catch (error) {
+            console.error(`[${sign}] ❌ Помилка на спробі ${attempt}:`, error.message);
+        }
+
+        const delay = Math.min(2000 + (attempt * 1000), 10000);
+        console.log(`[${sign}] ⏳ Очікування ${delay}мс перед наступною спробою...`);
+        await new Promise(r => setTimeout(r, delay));
+    }
+
+    console.error(`[${sign}] ❌ НЕ ВДАЛОСЯ ЗГЕНЕРУВАТИ після ${MAX_ATTEMPTS} спроб!`);
+    return `Зірки сьогодні мовчать для цього знаку. 🌟`;
+}
+
 async function publishSeriousHoroscope() {
     const today = new Date();
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
     const dateString = `${tomorrow.getDate()} ${getMonthNameUa(tomorrow)}`;
-    const generationPromises = ZODIAC_SIGNS.map(sign =>
-        generateHoroscope(sign.name, 'serious', 'завтра').then(text => ({ sign, text }))
-    );
-    const results = await Promise.all(generationPromises);
+
     let message = `*Гороскоп на завтра 🗓️ ${dateString}*\n\n`;
-    for (const { sign, text } of results) {
+
+    for (const sign of ZODIAC_SIGNS) {
+        console.log(`\n🔮 Починаю генерацію для ${sign.name}...`);
+        const text = await generateWithRetries(
+            () => generateHoroscope(sign.name, 'serious', 'завтра'),
+            sign.name
+        );
         message += `${sign.emoji} **${sign.name}**\n${text}\n\n`;
+        await new Promise(r => setTimeout(r, 1500));
     }
+
     await publishPost(message, 'Серйозний гороскоп');
 }
 
@@ -415,11 +451,17 @@ async function publishCompatibilityReading() {
 async function publishWeeklyHoroscope() {
     const dateString = calculateWeekRange(new Date());
     let message = `*Що чекає на цьому тижні? 🗓️ ${dateString}*\n\n`;
+
     for (const sign of ZODIAC_SIGNS) {
-        const text = await generateWeeklyHoroscopeReading(sign.name);
+        console.log(`\n📅 Починаю генерацію тижневого гороскопу для ${sign.name}...`);
+        const text = await generateWithRetries(
+            () => generateWeeklyHoroscopeReading(sign.name),
+            sign.name
+        );
         message += `${sign.emoji} *${sign.name}*\n${text}\n\n`;
-        await new Promise(r => setTimeout(r, 3000));
+        await new Promise(r => setTimeout(r, 2000));
     }
+
     await publishPost(message, 'Щотижневий гороскоп');
 }
 
