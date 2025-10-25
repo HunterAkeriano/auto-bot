@@ -533,68 +533,6 @@ function resetAllData() {
     return true;
 }
 
-function extractMessageId(input) {
-    const linkRegex = /(?:https?:\/\/)?t\.me\/c\/\d+\/(\d+)/;
-    const linkMatch = input.match(linkRegex);
-
-    if (linkMatch) {
-        return {
-            id: parseInt(linkMatch[1], 10),
-            link: linkMatch[0]
-        };
-    }
-
-    const parts = input.trim().split(/\s+/);
-    if (parts.length > 0 && !isNaN(parseInt(parts[0], 10))) {
-        return {
-            id: parseInt(parts[0], 10),
-            link: null
-        };
-    }
-
-    return { id: null, link: null };
-}
-
-async function handleReplyCommand(ctx) {
-    const userId = ctx.from.id.toString();
-    if (userId !== TELEGRAM_CONFIG.ADMIN_ID.toString()) {
-        return ctx.reply('🚫 Ця команда доступна лише адміністратору.');
-    }
-
-    const fullInput = ctx.message.text.substring(ctx.message.text.indexOf(' ') + 1).trim();
-    if (!fullInput) {
-        return ctx.reply('❌ Необхідно вказати ID повідомлення або посилання та текст відповіді.\nФормат: /reply <ID повідомлення | Посилання> <Текст відповіді>');
-    }
-
-    const { id: messageId, link: matchedLink } = extractMessageId(fullInput);
-    let replyText = '';
-
-    if (messageId) {
-        if (matchedLink) {
-            replyText = fullInput.substring(fullInput.indexOf(matchedLink) + matchedLink.length).trim();
-        } else {
-            const parts = fullInput.split(/\s+/);
-            replyText = parts.slice(1).join(' ').trim();
-        }
-    }
-
-    const targetChatId = TELEGRAM_CONFIG.CHANNEL_CHAT_ID;
-
-    if (!messageId || isNaN(messageId) || !replyText) {
-        return ctx.reply('❌ Не вдалося розпізнати ID повідомлення або текст відповіді.\nПереконайтесь, що ви ввели ID повідомлення (число) або посилання та текст.\nФормат: /reply <ID повідомлення | Посилання> <Текст відповіді>');
-    }
-
-    try {
-        await ctx.telegram.sendMessage(targetChatId, replyText, {
-            reply_to_message_id: messageId,
-            parse_mode: 'HTML'
-        });
-        await ctx.reply(`✅ Відповідь на повідомлення ID ${messageId} успішно надіслана у канал.`);
-    } catch (error) {
-        console.error('❌ Помилка при відповіді на повідомлення:', error);
-        await ctx.reply(`⚠️ Помилка надсилання відповіді: ${error.message}`);
-    }
-}
 
 
 bot.command('test', ctx => handleTestCommand(ctx, publishSeriousHoroscope, 'Serious'));
@@ -620,7 +558,6 @@ bot.command('reset_all', async ctx => {
         await ctx.reply(`⚠️ Помилка: ${err.message}`);
     }
 });
-bot.command('reply', handleReplyCommand);
 
 bot.command('gadaniye', async ctx => {
     const message = sanitizeUserMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n Зверніть увагу, кожен тип має свій ліміт часу.`);
@@ -634,6 +571,41 @@ bot.command('show_menu', async ctx => {
 
 bot.command('hide_menu', async ctx => {
     await ctx.reply('✅ Клавіатуру було приховано. Натисніть /start або /show_menu, щоб її відновити.', Markup.removeKeyboard());
+});
+
+bot.command('reply', async ctx => {
+    const userId = ctx.from.id.toString();
+    if (userId !== TELEGRAM_CONFIG.ADMIN_ID.toString()) {
+        return ctx.reply('🚫 Ця команда доступна лише адміністратору.');
+    }
+
+    const input = ctx.message.text.replace('/reply', '').trim();
+    if (!input) {
+        return ctx.reply('❌ Формат: /reply <посилання> <текст відповіді>\n\nПриклад:\n/reply https://t.me/c/2206913679/136833 я зря чтоли тебе на таро гадал?');
+    }
+
+    const urlMatch = input.match(/https:\/\/t\.me\/c\/(\d+)\/(\d+)/);
+    if (!urlMatch) {
+        return ctx.reply('❌ Невірне посилання. Використовуйте формат: https://t.me/c/CHAT_ID/MESSAGE_ID');
+    }
+
+    const chatId = `-100${urlMatch[1]}`;
+    const messageId = urlMatch[2];
+    const replyText = input.replace(urlMatch[0], '').trim();
+
+    if (!replyText) {
+        return ctx.reply('❌ Ви не вказали текст відповіді!');
+    }
+
+    try {
+        await bot.telegram.sendMessage(chatId, replyText, {
+            reply_to_message_id: parseInt(messageId)
+        });
+        await ctx.reply('✅ Відповідь успішно відправлена!');
+    } catch (err) {
+        console.error('❌ Помилка при відправці відповіді:', err);
+        await ctx.reply(`⚠️ Помилка: ${err.message}`);
+    }
 });
 
 bot.on('text', async ctx => {
