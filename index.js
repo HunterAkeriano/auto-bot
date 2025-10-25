@@ -541,20 +541,30 @@ async function handleReplyCommand(ctx) {
 
     const input = ctx.message.text.substring(ctx.message.text.indexOf(' ') + 1).trim();
     if (!input) {
-        return ctx.reply('❌ Необхідно вказати посилання на повідомлення або Message ID та текст відповіді.\nФормат: /reply <ID повідомлення> <Текст відповіді>');
+        return ctx.reply('❌ Необхідно вказати ID повідомлення або посилання та текст відповіді.\nФормат: /reply <ID повідомлення | Посилання> <Текст відповіді>');
     }
 
-    const parts = input.match(/^(\d+)\s+(.+)/s);
-    if (!parts) {
-        return ctx.reply('❌ Невірний формат. Переконайтесь, що ви ввели ID повідомлення (число) та текст.\nФормат: /reply <ID повідомлення> <Текст відповіді>');
+    let messageId = null;
+    let replyText = '';
+
+    const parts = input.split(/\s+/);
+    const firstPart = parts[0];
+
+    if (firstPart.startsWith('http')) {
+        const linkMatch = firstPart.match(/\/(\d+)$/);
+        if (linkMatch) {
+            messageId = parseInt(linkMatch[1], 10);
+            replyText = parts.slice(1).join(' ').trim();
+        }
+    } else if (!isNaN(parseInt(firstPart, 10))) {
+        messageId = parseInt(firstPart, 10);
+        replyText = parts.slice(1).join(' ').trim();
     }
 
-    const messageId = parseInt(parts[1], 10);
-    const replyText = parts[2].trim();
     const targetChatId = TELEGRAM_CONFIG.CHANNEL_CHAT_ID;
 
     if (isNaN(messageId) || !replyText) {
-        return ctx.reply('❌ Не вдалося розпізнати ID повідомлення або текст відповіді.');
+        return ctx.reply('❌ Не вдалося розпізнати ID повідомлення або текст відповіді.\nПереконайтесь, що ви ввели ID повідомлення (число) або посилання та текст.\nФормат: /reply <ID повідомлення | Посилання> <Текст відповіді>');
     }
 
     try {
