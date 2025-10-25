@@ -14,6 +14,8 @@ const TELEGRAM_CONFIG = {
     BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
 };
 
+const adminMessageMode = {};
+
 const GEMINI_CONFIG = {
     API_KEY: process.env.GEMINI_API_KEY,
     MODEL: 'gemini-2.5-flash'
@@ -605,6 +607,40 @@ bot.command('reply', async ctx => {
     } catch (err) {
         console.error('❌ Помилка при відправці відповіді:', err);
         await ctx.reply(`⚠️ Помилка: ${err.message}`);
+    }
+});
+
+bot.command('text', async ctx => {
+    const userId = ctx.from.id.toString();
+    if (userId !== TELEGRAM_CONFIG.ADMIN_ID.toString()) {
+        return ctx.reply('🚫 Ця команда доступна лише адміністратору.');
+    }
+
+    const input = ctx.message.text.replace('/text', '').trim();
+
+    if (input) {
+        try {
+            await bot.telegram.sendMessage(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, input);
+            await ctx.reply('✅ Повідомлення відправлено в канал!');
+        } catch (err) {
+            console.error('❌ Помилка при відправці:', err);
+            await ctx.reply(`⚠️ Помилка: ${err.message}`);
+        }
+    } else {
+        adminMessageMode[userId] = true;
+        await ctx.reply('📝 Режим відправки активовано!\n\nТепер надішліть мені будь-що (текст, фото, відео, GIF, документ), і я відправлю це в канал.\n\nДля скасування: /cancel');
+    }
+});
+
+bot.command('cancel', async ctx => {
+    const userId = ctx.from.id.toString();
+    if (userId !== TELEGRAM_CONFIG.ADMIN_ID.toString()) return;
+
+    if (adminMessageMode[userId]) {
+        delete adminMessageMode[userId];
+        await ctx.reply('❌ Режим відправки скасовано.');
+    } else {
+        await ctx.reply('ℹ️ Режим відправки не був активний.');
     }
 });
 
