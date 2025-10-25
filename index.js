@@ -533,6 +533,42 @@ function resetAllData() {
     return true;
 }
 
+async function handleReplyCommand(ctx) {
+    const userId = ctx.from.id.toString();
+    if (userId !== TELEGRAM_CONFIG.ADMIN_ID.toString()) {
+        return ctx.reply('🚫 Ця команда доступна лише адміністратору.');
+    }
+
+    const input = ctx.message.text.substring(ctx.message.text.indexOf(' ') + 1).trim();
+    if (!input) {
+        return ctx.reply('❌ Необхідно вказати посилання на повідомлення або Message ID та текст відповіді.\nФормат: /reply <ID повідомлення> <Текст відповіді>');
+    }
+
+    const parts = input.match(/^(\d+)\s+(.+)/s);
+    if (!parts) {
+        return ctx.reply('❌ Невірний формат. Переконайтесь, що ви ввели ID повідомлення (число) та текст.\nФормат: /reply <ID повідомлення> <Текст відповіді>');
+    }
+
+    const messageId = parseInt(parts[1], 10);
+    const replyText = parts[2].trim();
+    const targetChatId = TELEGRAM_CONFIG.CHANNEL_CHAT_ID;
+
+    if (isNaN(messageId) || !replyText) {
+        return ctx.reply('❌ Не вдалося розпізнати ID повідомлення або текст відповіді.');
+    }
+
+    try {
+        await ctx.telegram.sendMessage(targetChatId, replyText, {
+            reply_to_message_id: messageId,
+            parse_mode: 'HTML'
+        });
+        await ctx.reply(`✅ Відповідь на повідомлення ID ${messageId} успішно надіслана у канал.`);
+    } catch (error) {
+        console.error('❌ Помилка при відповіді на повідомлення:', error);
+        await ctx.reply(`⚠️ Помилка надсилання відповіді: ${error.message}`);
+    }
+}
+
 
 
 bot.command('test', ctx => handleTestCommand(ctx, publishSeriousHoroscope, 'Serious'));
@@ -558,6 +594,7 @@ bot.command('reset_all', async ctx => {
         await ctx.reply(`⚠️ Помилка: ${err.message}`);
     }
 });
+bot.command('reply', handleReplyCommand);
 
 bot.command('gadaniye', async ctx => {
     const message = sanitizeUserMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n Зверніть увагу, кожен тип має свій ліміт часу.`);
