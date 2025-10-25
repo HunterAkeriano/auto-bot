@@ -15,6 +15,7 @@ const TELEGRAM_CONFIG = {
 };
 
 const adminMessageMode = {};
+const TARGET_CHAT_ID = '-1002206913679';
 
 const GEMINI_CONFIG = {
     API_KEY: process.env.GEMINI_API_KEY,
@@ -620,15 +621,15 @@ bot.command('text', async ctx => {
 
     if (input) {
         try {
-            await bot.telegram.sendMessage(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, input);
-            await ctx.reply('✅ Повідомлення відправлено в канал!');
+            await bot.telegram.sendMessage(TARGET_CHAT_ID, input);
+            await ctx.reply('✅ Текст відправлено в чат!');
         } catch (err) {
             console.error('❌ Помилка при відправці:', err);
             await ctx.reply(`⚠️ Помилка: ${err.message}`);
         }
     } else {
         adminMessageMode[userId] = true;
-        await ctx.reply('📝 Режим відправки активовано!\n\nТепер надішліть мені будь-що (текст, фото, відео, GIF, документ), і я відправлю це в канал.\n\nДля скасування: /cancel');
+        await ctx.reply('📝 Режим відправки активовано!\n\nТепер надішліть мені будь-що, і я відправлю це в чат.\n\nДля скасування: /cancel');
     }
 });
 
