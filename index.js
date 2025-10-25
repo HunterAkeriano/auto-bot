@@ -533,37 +533,54 @@ function resetAllData() {
     return true;
 }
 
+function extractMessageId(input) {
+    const linkRegex = /(?:https?:\/\/)?t\.me\/c\/\d+\/(\d+)/;
+    const linkMatch = input.match(linkRegex);
+
+    if (linkMatch) {
+        return {
+            id: parseInt(linkMatch[1], 10),
+            link: linkMatch[0]
+        };
+    }
+
+    const parts = input.trim().split(/\s+/);
+    if (parts.length > 0 && !isNaN(parseInt(parts[0], 10))) {
+        return {
+            id: parseInt(parts[0], 10),
+            link: null
+        };
+    }
+
+    return { id: null, link: null };
+}
+
 async function handleReplyCommand(ctx) {
     const userId = ctx.from.id.toString();
     if (userId !== TELEGRAM_CONFIG.ADMIN_ID.toString()) {
         return ctx.reply('🚫 Ця команда доступна лише адміністратору.');
     }
 
-    const input = ctx.message.text.substring(ctx.message.text.indexOf(' ') + 1).trim();
-    if (!input) {
+    const fullInput = ctx.message.text.substring(ctx.message.text.indexOf(' ') + 1).trim();
+    if (!fullInput) {
         return ctx.reply('❌ Необхідно вказати ID повідомлення або посилання та текст відповіді.\nФормат: /reply <ID повідомлення | Посилання> <Текст відповіді>');
     }
 
-    let messageId = null;
+    const { id: messageId, link: matchedLink } = extractMessageId(fullInput);
     let replyText = '';
 
-    const parts = input.split(/\s+/);
-    const firstPart = parts[0];
-
-    if (firstPart.startsWith('http')) {
-        const linkMatch = firstPart.match(/\/(\d+)$/);
-        if (linkMatch) {
-            messageId = parseInt(linkMatch[1], 10);
+    if (messageId) {
+        if (matchedLink) {
+            replyText = fullInput.substring(fullInput.indexOf(matchedLink) + matchedLink.length).trim();
+        } else {
+            const parts = fullInput.split(/\s+/);
             replyText = parts.slice(1).join(' ').trim();
         }
-    } else if (!isNaN(parseInt(firstPart, 10))) {
-        messageId = parseInt(firstPart, 10);
-        replyText = parts.slice(1).join(' ').trim();
     }
 
     const targetChatId = TELEGRAM_CONFIG.CHANNEL_CHAT_ID;
 
-    if (isNaN(messageId) || !replyText) {
+    if (!messageId || isNaN(messageId) || !replyText) {
         return ctx.reply('❌ Не вдалося розпізнати ID повідомлення або текст відповіді.\nПереконайтесь, що ви ввели ID повідомлення (число) або посилання та текст.\nФормат: /reply <ID повідомлення | Посилання> <Текст відповіді>');
     }
 
@@ -578,7 +595,6 @@ async function handleReplyCommand(ctx) {
         await ctx.reply(`⚠️ Помилка надсилання відповіді: ${error.message}`);
     }
 }
-
 
 
 bot.command('test', ctx => handleTestCommand(ctx, publishSeriousHoroscope, 'Serious'));
