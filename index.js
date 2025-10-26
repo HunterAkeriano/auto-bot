@@ -124,18 +124,6 @@ function getMonthNameUa(date) {
     return monthNamesUa[date.getMonth()];
 }
 
-async function keepTyping() {
-    while (true) {
-        try {
-            await bot.telegram.sendChatAction(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, 'typing')
-        } catch (err) {
-            console.error('Ошибка при отправке chat action:', err.message)
-        }
-        await new Promise(r => setTimeout(r, 4000))
-    }
-}
-keepTyping()
-
 function calculateWeekRange(today) {
     const currentDayOfWeek = today.getDay();
     const monday = new Date(today);
@@ -667,8 +655,20 @@ bot.on('text', async ctx => {
     }
 });
 
-bot.launch();
-console.log('🌟 Gemini бот запущений і очікує розкладу');
+bot.launch().then(() => {
+    console.log('🌟 Gemini бот запущений і очікує розкладу');
+
+    (async function keepTyping() {
+        while (true) {
+            try {
+                await bot.telegram.sendChatAction(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, 'typing');
+            } catch (err) {
+                console.error('Ошибка при отправке chat action:', err.message);
+            }
+            await new Promise(r => setTimeout(r, 4000));
+        }
+    })();
+});
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
