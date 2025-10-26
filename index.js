@@ -655,6 +655,18 @@ bot.on('text', async ctx => {
     }
 });
 
+async function keepTyping() {
+    while (true) {
+        try {
+            await bot.telegram.sendChatAction(process.env.CHANNEL_CHAT_ID, 'typing')
+        } catch (err) {
+            console.error('Ошибка при отправке chat action:', err.message)
+        }
+        await new Promise(r => setTimeout(r, 4000))
+    }
+}
+keepTyping()
+
 bot.launch();
 console.log('🌟 Gemini бот запущений і очікує розкладу');
 
