@@ -127,7 +127,7 @@ function getMonthNameUa(date) {
 async function keepTyping() {
     while (true) {
         try {
-            await bot.telegram.sendChatAction(targetChatId, 'typing')
+            await bot.telegram.sendChatAction(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, 'typing')
         } catch (err) {
             console.error('Ошибка при отправке chat action:', err.message)
         }
