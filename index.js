@@ -655,20 +655,20 @@ bot.on('text', async ctx => {
     }
 });
 
-bot.launch().then(() => {
-    console.log('🌟 Gemini бот запущений і очікує розкладу');
-
-    (async function keepTyping() {
-        while (true) {
-            try {
-                await bot.telegram.sendChatAction(TELEGRAM_CONFIG.CHANNEL_CHAT_ID, 'typing');
-            } catch (err) {
-                console.error('Ошибка при отправке chat action:', err.message);
-            }
-            await new Promise(r => setTimeout(r, 4000));
+async function keepTyping() {
+    while (true) {
+        try {
+            await bot.telegram.sendChatAction(process.env.CHANNEL_CHAT_ID, 'typing')
+        } catch (err) {
+            console.error('Ошибка при отправке chat action:', err.message)
         }
-    })();
-});
+        await new Promise(r => setTimeout(r, 4000))
+    }
+}
+keepTyping()
+
+bot.launch();
+console.log('🌟 Gemini бот запущений і очікує розкладу');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
