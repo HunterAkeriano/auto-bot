@@ -658,7 +658,7 @@ bot.on('text', async ctx => {
 async function keepTyping() {
     while (true) {
         try {
-            await bot.telegram.sendChatAction(process.env.CHANNEL_CHAT_ID, 'typing')
+            await bot.telegram.sendChatAction('-1002206913679', 'typing')
         } catch (err) {
             console.error('Ошибка при отправке chat action:', err.message)
         }
