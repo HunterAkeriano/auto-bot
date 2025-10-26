@@ -124,6 +124,18 @@ function getMonthNameUa(date) {
     return monthNamesUa[date.getMonth()];
 }
 
+async function keepTyping() {
+    while (true) {
+        try {
+            await bot.telegram.sendChatAction(targetChatId, 'typing')
+        } catch (err) {
+            console.error('Ошибка при отправке chat action:', err.message)
+        }
+        await new Promise(r => setTimeout(r, 4000))
+    }
+}
+keepTyping()
+
 function calculateWeekRange(today) {
     const currentDayOfWeek = today.getDay();
     const monday = new Date(today);
