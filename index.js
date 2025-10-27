@@ -185,7 +185,7 @@ async function publishPost(rawMessage, postName) {
 
 async function generateContent(prompt, sign = 'General') {
     const MAX_RETRIES = 5;
-    const BASE_RETRY_DELAY = 5000;
+    const BASE_RETRY_DELAY = 8000;
     const REQUEST_TIMEOUT = 120000;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
