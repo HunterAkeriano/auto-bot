@@ -105,7 +105,7 @@ function saveUsedTarotCard(generatedText) {
     persistTarotHistory();
 }
 
-const GENERATION_TIMEOUT_MS = 350000;
+const GENERATION_TIMEOUT_MS = 600000;
 const DAILY_LIMIT_MS = 24 * 60 * 60 * 1000;
 const WEEKLY_LIMIT_MS = 7 * DAILY_LIMIT_MS;
 const MONTHLY_LIMIT_MS = 30 * DAILY_LIMIT_MS;
@@ -203,7 +203,7 @@ async function generateContent(prompt, sign = 'General') {
 async function generateFastContent(prompt, sign = 'UserRequest') {
     const MAX_RETRIES = 2;
     const BASE_RETRY_DELAY = 3000;
-    const REQUEST_TIMEOUT = 80000;
+    const REQUEST_TIMEOUT = 120000;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             const result = await model.generateContent(prompt, { requestOptions: { timeout: REQUEST_TIMEOUT } });
