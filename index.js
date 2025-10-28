@@ -563,6 +563,14 @@ bot.command('reset_all', async ctx => {
 });
 
 bot.command('gadaniye', async ctx => {
+    if (ctx.chat && ctx.chat.id.toString() === TARGET_CHAT_ID) {
+        await ctx.reply(
+            `Я більше не відповідаю в цьому каналі, підписуйтесь: ${TELEGRAM_CONFIG.CHANNEL_LINK}`,
+            { disable_web_page_preview: true }
+        );
+        return
+    }
+
     const message = sanitizeUserMarkdown(`🔮 *Оберіть тип передбачення Таро:*\n Зверніть увагу, кожен тип має свій ліміт часу.`);
     await ctx.replyWithMarkdownV2(message, predictionKeyboard);
 });
