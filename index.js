@@ -40,6 +40,39 @@ const ZODIAC_SIGNS = [
 
 const tarotEmojis = ['🔮', '🃏', '🌙', '✨', '🌟', '♾️', '🔥', '💫'];
 
+const AI_SYSTEM_PROMPT = 'Відповідай тільки українською мовою. Пиши лише по суті запиту, без вступів, без подяки, без згадок про процес генерації, без фраз на кшталт "у цій відповіді", "я вибрав карту", "дякую за запитання". Не вигадуй неіснуючі сутності. Формат і обмеження користувацького запиту обовʼязкові.';
+const MAJOR_ARCANA_UA = new Set([
+    'Блазень',
+    'Маг',
+    'Верховна Жриця',
+    'Імператриця',
+    'Імператор',
+    'Ієрофант',
+    'Закохані',
+    'Колісниця',
+    'Сила',
+    'Відлюдник',
+    'Колесо Фортуни',
+    'Справедливість',
+    'Повішений',
+    'Смерть',
+    'Поміркованість',
+    'Диявол',
+    'Вежа',
+    'Зірка',
+    'Місяць',
+    'Сонце',
+    'Суд',
+    'Світ'
+]);
+const BAD_META_PATTERNS = [
+    /дякую за запитання/i,
+    /у цій відповіді/i,
+    /я (витягнув|вибрав|виграв) карту/i,
+    /я зроблю/i,
+    /as an ai/i
+];
+
 if (
     !TELEGRAM_CONFIG.BOT_TOKEN ||
     !AI_CONFIG.API_KEY ||
@@ -98,7 +131,7 @@ function getUserRecord(userId) {
 function saveUsedTarotCard(generatedText) {
     const match = generatedText.match(/\*([^*]+)\*/);
     if (!match || !match[1]) return;
-    const cardName = match[1].trim();
+    const cardName = match[1].trim().replace(/^\[/, '').replace(/\]$/, '');
     if (usedTarotCardsHistory.includes(cardName)) return;
     usedTarotCardsHistory.push(cardName);
     if (usedTarotCardsHistory.length > MAX_TAROT_CARDS) usedTarotCardsHistory = [];
@@ -172,6 +205,42 @@ function sanitizeUserMarkdown(text) {
     return text.replace(markdownV2ReservedChars, '\\$1').replace(/([\r\n]{2,})/g, '\n\n');
 }
 
+function normalizeAiText(text) {
+    if (!text) return '';
+    const lines = text
+        .replace(/\r/g, '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .filter(line => !BAD_META_PATTERNS.some(pattern => pattern.test(line)));
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function looksUkrainian(text) {
+    return !/[ЁёЫыЪъЭэ]/.test(text);
+}
+
+function extractTarotCardNames(text) {
+    const bracketMatches = [...text.matchAll(/\*\[([^\]\n*]+)\]\*/g)].map(match => match[1].trim());
+    if (bracketMatches.length > 0) return bracketMatches;
+    return [...text.matchAll(/\*([^*\n]+)\*/g)].map(match => match[1].trim().replace(/^[^\p{L}]+/u, ''));
+}
+
+function isValidTarotText(text, requiredCards = 1) {
+    const names = extractTarotCardNames(text);
+    if (names.length < requiredCards) return false;
+    for (const name of names.slice(0, requiredCards)) {
+        if (!MAJOR_ARCANA_UA.has(name)) return false;
+    }
+    return true;
+}
+
+function isCleanGeneration(text) {
+    if (!text || text.length < 10) return false;
+    if (!looksUkrainian(text)) return false;
+    return !BAD_META_PATTERNS.some(pattern => pattern.test(text));
+}
+
 async function publishPost(rawMessage, postName) {
     const htmlMessage = convertToHtml(rawMessage);
     const finalLinkHtml = `<a href="${TELEGRAM_CONFIG.CHANNEL_LINK}">Код Долі📌</a>\n`;
@@ -183,7 +252,7 @@ async function publishPost(rawMessage, postName) {
     console.log(`✅ ${postName} опубліковано`);
 }
 
-async function generateContent(prompt, sign = 'General') {
+async function generateContent(prompt, sign = 'General', validator = null) {
     const MAX_RETRIES = 5;
     const BASE_RETRY_DELAY = 8000;
     const REQUEST_TIMEOUT = 120000;
@@ -194,10 +263,16 @@ async function generateContent(prompt, sign = 'General') {
             const result = await openai.chat.completions.create({
                 model: AI_CONFIG.MODEL,
                 temperature: 0.9,
-                messages: [{ role: 'user', content: prompt }]
+                messages: [
+                    { role: 'system', content: AI_SYSTEM_PROMPT },
+                    { role: 'user', content: prompt }
+                ]
             }, { signal: controller.signal });
             clearTimeout(timeoutId);
-            return (result.choices?.[0]?.message?.content || '').trim().replace(/[\r\n]{2,}/g, '\n');
+            const text = normalizeAiText(result.choices?.[0]?.message?.content || '');
+            if (!isCleanGeneration(text)) throw new Error('Invalid generation quality');
+            if (validator && !validator(text)) throw new Error('Invalid generation format');
+            return text.replace(/[\r\n]{2,}/g, '\n');
         } catch (error) {
             console.error(`[${sign}] Помилка генерації (${attempt}/${MAX_RETRIES}): ${error.message}`);
             if (attempt === MAX_RETRIES) return '❌ Не вдалося згенерувати вміст.';
@@ -207,8 +282,8 @@ async function generateContent(prompt, sign = 'General') {
     }
 }
 
-async function generateFastContent(prompt, sign = 'UserRequest') {
-    const MAX_RETRIES = 2;
+async function generateFastContent(prompt, sign = 'UserRequest', validator = null) {
+    const MAX_RETRIES = validator ? 4 : 2;
     const BASE_RETRY_DELAY = 3000;
     const REQUEST_TIMEOUT = 120000;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -218,10 +293,16 @@ async function generateFastContent(prompt, sign = 'UserRequest') {
             const result = await openai.chat.completions.create({
                 model: AI_CONFIG.MODEL,
                 temperature: 0.9,
-                messages: [{ role: 'user', content: prompt }]
+                messages: [
+                    { role: 'system', content: AI_SYSTEM_PROMPT },
+                    { role: 'user', content: prompt }
+                ]
             }, { signal: controller.signal });
             clearTimeout(timeoutId);
-            return (result.choices?.[0]?.message?.content || '').trim().replace(/[\r\n]{2,}/g, '\n');
+            const text = normalizeAiText(result.choices?.[0]?.message?.content || '');
+            if (!isCleanGeneration(text)) throw new Error('Invalid generation quality');
+            if (validator && !validator(text)) throw new Error('Invalid generation format');
+            return text.replace(/[\r\n]{2,}/g, '\n');
         } catch (error) {
             console.error(`[${sign}] Помилка швидкої генерації (${attempt}/${MAX_RETRIES}): ${error.message}`);
             if (attempt === MAX_RETRIES) throw new Error('Generation failed after max retries.');
@@ -234,7 +315,7 @@ async function generateFastContent(prompt, sign = 'UserRequest') {
 async function generatePersonalTarotWeekly() {
     const prompt = `Вибери ТРИ випадкові карти Таро для індивідуального передбачення на тиждень. Форматуй назви як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
 Нехай прогноз буде щирим, не лише позитивним. Коротко опиши початок, середину і кінець тижня. До 150 слів.`;
-    const result = await generateFastContent(prompt, 'Personal Tarot Weekly');
+    const result = await generateFastContent(prompt, 'Personal Tarot Weekly', text => isValidTarotText(text, 3));
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на тиждень* ✨\n\n${formatted}`;
 }
@@ -242,7 +323,7 @@ async function generatePersonalTarotWeekly() {
 async function generatePersonalTarotMonthly() {
     const prompt = `Вибери ОДНУ ключову карту Таро для індивідуального передбачення на місяць. Форматуй назву як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
 Нехай прогноз буде щирим, не лише позитивним.. До 200 слів.`;
-    const result = await generateFastContent(prompt, 'Personal Tarot Monthly');
+    const result = await generateFastContent(prompt, 'Personal Tarot Monthly', text => isValidTarotText(text, 1));
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на місяць* ✨\n\n${formatted}`;
 }
@@ -250,7 +331,7 @@ async function generatePersonalTarotMonthly() {
 async function generatePersonalTarotReading() {
     const prompt = `Вибери одну карту з повної колоди Таро для індивідуального передбачення на день. Форматуй назву як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
 Нехай прогноз буде щирим, не лише позитивним., порада. До 100 слів.`;
-    const result = await generateFastContent(prompt, 'Personal Tarot Reading');
+    const result = await generateFastContent(prompt, 'Personal Tarot Reading', text => isValidTarotText(text, 1));
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на день* ✨\n\n${formatted}`;
 }
@@ -347,9 +428,11 @@ async function generateHoroscope(sign, promptStyle, dayContext) {
 
 async function generateTarotReading(dayContext) {
     const exclusionList = usedTarotCardsHistory.join(', ');
-    const exclusion = exclusionList ? ` Карта НЕ ПОВИННА бути однією з цих: ${exclusionList}.` : '';
-    const prompt = `Вибери одну карту з повної колоди Таро (78 карт, включно з Молодшими Арканами). Назви її українською та дай короткий позитивний прогноз на ${dayContext}. Формат: *[Назва Карти]*. Опис і прогноз. До 70 слів.${exclusion}`;
-    const result = await generateContent(prompt, 'Tarot (78 cards)');
+    const exclusion = exclusionList ? ` Не використовуй карти з цього списку: ${exclusionList}.` : '';
+    const prompt = `Обери одну карту тільки зі списку старших арканів: Блазень, Маг, Верховна Жриця, Імператриця, Імператор, Ієрофант, Закохані, Колісниця, Сила, Відлюдник, Колесо Фортуни, Справедливість, Повішений, Смерть, Поміркованість, Диявол, Вежа, Зірка, Місяць, Сонце, Суд, Світ.
+Формат: *[Назва Карти]*, далі короткий прогноз на ${dayContext} до 70 слів.
+Тільки по суті, без вступів і без опису процесу.${exclusion}`;
+    const result = await generateContent(prompt, 'Tarot (78 cards)', text => isValidTarotText(text, 1));
     saveUsedTarotCard(result);
     return result;
 }
@@ -376,9 +459,12 @@ async function generateDailyWish(dateString) {
 
 async function generateDailyTarotAnalysis(dayContext) {
     const exclusionList = usedTarotCardsHistory.join(', ');
-    const exclusion = exclusionList ? ` НЕ використовуй карту з назвою зі списку: ${exclusionList}.` : '';
-    const prompt = `Вибери ОДНУ випадкову карту з повної колоди Таро (78 карт). Назви її та створи глибокий "розбір таро" на ${dayContext}: ключове значення, психологічна порада, вплив на вечір. Формат: *[Назва Карти]*. Потім детальний аналіз.${exclusion} До 120 слів.`;
-    const result = await generateContent(prompt, 'Tarot Analysis (78 cards)');
+    const exclusion = exclusionList ? ` Не використовуй карти з цього списку: ${exclusionList}.` : '';
+    const prompt = `Обери одну карту тільки зі списку старших арканів: Блазень, Маг, Верховна Жриця, Імператриця, Імператор, Ієрофант, Закохані, Колісниця, Сила, Відлюдник, Колесо Фортуни, Справедливість, Повішений, Смерть, Поміркованість, Диявол, Вежа, Зірка, Місяць, Сонце, Суд, Світ.
+Формат: перший рядок *[Назва Карти]*.
+Потім глибокий, але практичний розбір на ${dayContext}: значення, психологічна порада, імпульс на вечір. До 120 слів.
+Без службових фраз, без подяк, тільки українською.${exclusion}`;
+    const result = await generateContent(prompt, 'Tarot Analysis (78 cards)', text => isValidTarotText(text, 1));
     saveUsedTarotCard(result);
     return result;
 }
