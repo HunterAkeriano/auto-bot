@@ -18,8 +18,9 @@ const adminMessageMode = {};
 const TARGET_CHAT_ID = '-1002206913679';
 
 const AI_CONFIG = {
-    API_KEY: process.env.OPENAI_API_KEY,
-    MODEL: process.env.OPENAI_MODEL || 'gpt-4.1-mini'
+    API_KEY: process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY,
+    BASE_URL: process.env.AI_BASE_URL || 'https://api.groq.com/openai/v1',
+    MODEL: process.env.AI_MODEL || process.env.GROQ_MODEL || 'llama-3.1-8b-instant'
 };
 
 const ZODIAC_SIGNS = [
@@ -51,7 +52,7 @@ if (
 }
 
 const bot = new Telegraf(TELEGRAM_CONFIG.BOT_TOKEN);
-const openai = new OpenAI({ apiKey: AI_CONFIG.API_KEY });
+const openai = new OpenAI({ apiKey: AI_CONFIG.API_KEY, baseURL: AI_CONFIG.BASE_URL });
 const TIMEZONE = 'Europe/Kiev';
 
 const TAROT_HISTORY_FILE = path.resolve('./tarot_history.json');
