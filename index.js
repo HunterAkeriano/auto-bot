@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { Telegraf, Markup } from 'telegraf';
 import cron from 'node-cron';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 
 dotenv.config();
 
@@ -17,9 +17,9 @@ const TELEGRAM_CONFIG = {
 const adminMessageMode = {};
 const TARGET_CHAT_ID = '-1002206913679';
 
-const GEMINI_CONFIG = {
-    API_KEY: process.env.GEMINI_API_KEY,
-    MODEL: 'gemini-2.5-flash'
+const AI_CONFIG = {
+    API_KEY: process.env.OPENAI_API_KEY,
+    MODEL: process.env.OPENAI_MODEL || 'gpt-4.1-mini'
 };
 
 const ZODIAC_SIGNS = [
@@ -41,7 +41,7 @@ const tarotEmojis = ['🔮', '🃏', '🌙', '✨', '🌟', '♾️', '🔥', '�
 
 if (
     !TELEGRAM_CONFIG.BOT_TOKEN ||
-    !GEMINI_CONFIG.API_KEY ||
+    !AI_CONFIG.API_KEY ||
     !TELEGRAM_CONFIG.ADMIN_ID ||
     !TELEGRAM_CONFIG.CHANNEL_LINK ||
     !TELEGRAM_CONFIG.CHANNEL_CHAT_ID
@@ -51,8 +51,7 @@ if (
 }
 
 const bot = new Telegraf(TELEGRAM_CONFIG.BOT_TOKEN);
-const genAI = new GoogleGenerativeAI(GEMINI_CONFIG.API_KEY);
-const model = genAI.getGenerativeModel({ model: GEMINI_CONFIG.MODEL, generationConfig: {temperature: 0.9} });
+const openai = new OpenAI({ apiKey: AI_CONFIG.API_KEY });
 const TIMEZONE = 'Europe/Kiev';
 
 const TAROT_HISTORY_FILE = path.resolve('./tarot_history.json');
@@ -189,8 +188,15 @@ async function generateContent(prompt, sign = 'General') {
     const REQUEST_TIMEOUT = 120000;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const result = await model.generateContent(prompt, { requestOptions: { timeout: REQUEST_TIMEOUT } });
-            return result.response.text().trim().replace(/[\r\n]{2,}/g, '\n');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+            const result = await openai.chat.completions.create({
+                model: AI_CONFIG.MODEL,
+                temperature: 0.9,
+                messages: [{ role: 'user', content: prompt }]
+            }, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            return (result.choices?.[0]?.message?.content || '').trim().replace(/[\r\n]{2,}/g, '\n');
         } catch (error) {
             console.error(`[${sign}] Помилка генерації (${attempt}/${MAX_RETRIES}): ${error.message}`);
             if (attempt === MAX_RETRIES) return '❌ Не вдалося згенерувати вміст.';
@@ -206,8 +212,15 @@ async function generateFastContent(prompt, sign = 'UserRequest') {
     const REQUEST_TIMEOUT = 120000;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const result = await model.generateContent(prompt, { requestOptions: { timeout: REQUEST_TIMEOUT } });
-            return result.response.text().trim().replace(/[\r\n]{2,}/g, '\n');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+            const result = await openai.chat.completions.create({
+                model: AI_CONFIG.MODEL,
+                temperature: 0.9,
+                messages: [{ role: 'user', content: prompt }]
+            }, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            return (result.choices?.[0]?.message?.content || '').trim().replace(/[\r\n]{2,}/g, '\n');
         } catch (error) {
             console.error(`[${sign}] Помилка швидкої генерації (${attempt}/${MAX_RETRIES}): ${error.message}`);
             if (attempt === MAX_RETRIES) throw new Error('Generation failed after max retries.');
@@ -664,7 +677,7 @@ bot.on('text', async ctx => {
 });
 
 bot.launch();
-console.log('🌟 Gemini бот запущений і очікує розкладу');
+console.log('🌟 AI бот запущений і очікує розкладу');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
