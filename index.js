@@ -65,6 +65,7 @@ const MAJOR_ARCANA_UA = new Set([
     'Суд',
     'Світ'
 ]);
+const MAJOR_ARCANA_PROMPT_LIST = [...MAJOR_ARCANA_UA].join(', ');
 const BAD_META_PATTERNS = [
     /дякую за запитання/i,
     /у цій відповіді/i,
@@ -221,9 +222,18 @@ function looksUkrainian(text) {
 }
 
 function extractTarotCardNames(text) {
-    const bracketMatches = [...text.matchAll(/\*\[([^\]\n*]+)\]\*/g)].map(match => match[1].trim());
-    if (bracketMatches.length > 0) return bracketMatches;
-    return [...text.matchAll(/\*([^*\n]+)\*/g)].map(match => match[1].trim().replace(/^[^\p{L}]+/u, ''));
+    const normalizeName = value => value
+        .trim()
+        .replace(/^[^\p{L}]+/u, '')
+        .replace(/[^\p{L}\s'’`-]+$/u, '')
+        .trim();
+    const candidates = [
+        ...[...text.matchAll(/\*\[\s*([^\]\n*]+)\s*\]\*/g)].map(match => match[1]),
+        ...[...text.matchAll(/\[\s*([^\]\n*]+)\s*\]/g)].map(match => match[1]),
+        ...[...text.matchAll(/\*\*([^*\n]+)\*\*/g)].map(match => match[1]),
+        ...[...text.matchAll(/\*([^*\n]+)\*/g)].map(match => match[1])
+    ].map(normalizeName).filter(Boolean);
+    return [...new Set(candidates)];
 }
 
 function isValidTarotText(text, requiredCards = 1) {
@@ -313,24 +323,27 @@ async function generateFastContent(prompt, sign = 'UserRequest', validator = nul
 }
 
 async function generatePersonalTarotWeekly() {
-    const prompt = `Вибери ТРИ випадкові карти Таро для індивідуального передбачення на тиждень. Форматуй назви як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
-Нехай прогноз буде щирим, не лише позитивним. Коротко опиши початок, середину і кінець тижня. До 150 слів.`;
+    const prompt = `Вибери рівно 3 карти Таро лише зі списку Старших Арканів: ${MAJOR_ARCANA_PROMPT_LIST}.
+Форматуй кожну вибрану карту як *[Назва Карти]*.
+Напиши емоційно глибокий прогноз українською на тиждень (початок, середина, кінець тижня), до 150 слів, без вступів і службових фраз.`;
     const result = await generateFastContent(prompt, 'Personal Tarot Weekly', text => isValidTarotText(text, 3));
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на тиждень* ✨\n\n${formatted}`;
 }
 
 async function generatePersonalTarotMonthly() {
-    const prompt = `Вибери ОДНУ ключову карту Таро для індивідуального передбачення на місяць. Форматуй назву як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
-Нехай прогноз буде щирим, не лише позитивним.. До 200 слів.`;
+    const prompt = `Вибери рівно 1 карту Таро лише зі списку Старших Арканів: ${MAJOR_ARCANA_PROMPT_LIST}.
+Форматуй карту як *[Назва Карти]*.
+Напиши емоційно глибокий прогноз українською на місяць, до 200 слів, без вступів і службових фраз.`;
     const result = await generateFastContent(prompt, 'Personal Tarot Monthly', text => isValidTarotText(text, 1));
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на місяць* ✨\n\n${formatted}`;
 }
 
 async function generatePersonalTarotReading() {
-    const prompt = `Вибери одну карту з повної колоди Таро для індивідуального передбачення на день. Форматуй назву як *[Назва Карти]*. Пиши з емоційною глибиною, допускаючи тіні, сумніви, невизначеність.
-Нехай прогноз буде щирим, не лише позитивним., порада. До 100 слів.`;
+    const prompt = `Вибери рівно 1 карту Таро лише зі списку Старших Арканів: ${MAJOR_ARCANA_PROMPT_LIST}.
+Форматуй карту як *[Назва Карти]*.
+Напиши емоційно глибокий прогноз українською на день з практичною порадою, до 100 слів, без вступів і службових фраз.`;
     const result = await generateFastContent(prompt, 'Personal Tarot Reading', text => isValidTarotText(text, 1));
     const formatted = formatTarotCardBold(result);
     return `✨ *Ваше індивідуальне передбачення Таро на день* ✨\n\n${formatted}`;
